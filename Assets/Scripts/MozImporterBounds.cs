@@ -78,11 +78,18 @@ public class MozImporterBounds : MonoBehaviour
 
         if (hasBounds)
         {
-            CreateBoundsObject(root.transform, totalBounds);
+            GameObject boundsGO = CreateBoundsObject(root.transform, totalBounds);
 
             // Attach MozCabinetData component and populate from parsed data
             MozCabinetData cabinetData = root.AddComponent<MozCabinetData>();
             PopulateCabinetData(cabinetData, cab);
+
+            // Attach MozBoundsHighlighter for selection visibility
+            MozBoundsHighlighter highlighter = root.AddComponent<MozBoundsHighlighter>();
+            if (boundsGO != null)
+            {
+                highlighter.boundsRenderer = boundsGO.GetComponent<Renderer>();
+            }
 
             Debug.Log($"[MozImporterBounds] Imported {cab.Parts.Count} parts into '{rootName}' with bounds size {totalBounds.size}.\n" +
                       $"  Elevation: {cab.ElevationMm}mm, Dimensions: {cab.WidthMm}x{cab.HeightMm}x{cab.DepthMm}mm");
@@ -153,7 +160,7 @@ public class MozImporterBounds : MonoBehaviour
         return go;
     }
 
-    private void CreateBoundsObject(Transform root, Bounds totalBounds)
+    private GameObject CreateBoundsObject(Transform root, Bounds totalBounds)
     {
         GameObject boundsGO = GameObject.CreatePrimitive(PrimitiveType.Cube);
         boundsGO.name = "Bounds";
@@ -174,5 +181,7 @@ public class MozImporterBounds : MonoBehaviour
             col.isTrigger = true;
 
         Debug.Log($"[MozImporterBounds] Bounds center: {totalBounds.center}, size: {totalBounds.size}");
+
+        return boundsGO;
     }
 }

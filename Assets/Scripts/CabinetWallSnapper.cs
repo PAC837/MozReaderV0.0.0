@@ -154,7 +154,7 @@ public class CabinetWallSnapper : MonoBehaviour
         transform.position = newPosition;
         _lastSnapSuccessful = true;
 
-        // Update MozCabinetData if present
+        // Update MozCabinetData if present (X position only - elevation is preserved from .moz file)
         if (_cabinetData == null)
         {
             _cabinetData = GetComponent<MozCabinetData>();
@@ -166,7 +166,9 @@ public class CabinetWallSnapper : MonoBehaviour
 #endif
             _cabinetData.TargetWall = targetWall;
             _cabinetData.UpdateXPositionFromWorld();
-            _cabinetData.UpdateElevationFromWorld();
+            // NOTE: Don't call UpdateElevationFromWorld() here - it would overwrite the original
+            // elevation from the .moz file. The elevation should only be updated when user
+            // explicitly changes the cabinet height (future drag-to-adjust feature).
         }
 
         Debug.Log($"[CabinetWallSnapper] Snapped '{gameObject.name}' to wall '{targetWall.gameObject.name}'.\n" +

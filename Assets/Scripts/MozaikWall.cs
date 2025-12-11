@@ -134,20 +134,25 @@ public class MozaikWall : MonoBehaviour
 
     /// <summary>
     /// Gets the X position of the wall's left edge (start point).
+    /// Accounts for wall rotation using transform.right.
     /// </summary>
     public float GetLeftEdgeX()
     {
         float lenM = lengthMm * 0.001f;
-        // Wall transform is at bottom-center, left edge is at -X direction
-        return transform.position.x - (lenM * 0.5f);
+        // Wall transform is at bottom-center, left edge is at -X direction (in local space)
+        // Use transform.right to account for wall rotation
+        Vector3 leftEdge = transform.position - transform.right * (lenM * 0.5f);
+        return leftEdge.x;
     }
 
     /// <summary>
     /// Gets the X position of the wall's right edge (end point).
+    /// Accounts for wall rotation using transform.right.
     /// </summary>
     public float GetRightEdgeX()
     {
         float lenM = lengthMm * 0.001f;
-        return transform.position.x + (lenM * 0.5f);
+        Vector3 rightEdge = transform.position + transform.right * (lenM * 0.5f);
+        return rightEdge.x;
     }
 }
