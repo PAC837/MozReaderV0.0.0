@@ -6,6 +6,7 @@ using UnityEngine;
 /// 1) Imports parts like MozImporter
 /// 2) Adds a bounding box GameObject around all parts
 ///    that represents total width, depth, and height.
+/// 3) Auto-snaps to selected wall via RuntimeWallSelector (if available)
 /// Uses MozCabinet, MozPart, MozParser, MozCoordinateMapper from MozImporter.cs.
 /// </summary>
 public class MozImporterBounds : MonoBehaviour
@@ -20,6 +21,13 @@ public class MozImporterBounds : MonoBehaviour
 
     [Tooltip("Material for the bounding box cube (optional, e.g. transparent outline).")]
     public Material boundsMaterial;
+
+    [Header("Auto-Snap Settings")]
+    [Tooltip("Automatically snap imported cabinets to the currently selected wall.")]
+    public bool autoSnapToSelectedWall = true;
+
+    [Tooltip("Add CabinetWallSnapper component to imported cabinets.")]
+    public bool addWallSnapperComponent = true;
 
     private const float MM_TO_M = 0.001f;
 
@@ -89,6 +97,12 @@ public class MozImporterBounds : MonoBehaviour
             if (boundsGO != null)
             {
                 highlighter.boundsRenderer = boundsGO.GetComponent<Renderer>();
+            }
+
+            // Auto-snap to selected wall if enabled
+            if (addWallSnapperComponent || autoSnapToSelectedWall)
+            {
+                SetupWallSnapping(root, cabinetData);
             }
 
             Debug.Log($"[MozImporterBounds] Imported {cab.Parts.Count} parts into '{rootName}' with bounds size {totalBounds.size}.\n" +
@@ -183,5 +197,92 @@ public class MozImporterBounds : MonoBehaviour
         Debug.Log($"[MozImporterBounds] Bounds center: {totalBounds.center}, size: {totalBounds.size}");
 
         return boundsGO;
+    }
+
+    /// <summary>
+    /// Sets up wall snapping for the imported cabinet.
+    /// - Adds CabinetWallSnapper component
+    /// - Assigns selected wall from RuntimeWallSelector
+    /// - Optionally auto-snaps to the wall
+    /// </summary>
+    private void SetupWallSnapping(GameObject cabinetRoot, MozCabinetData cabinetData)
+    {
+        // Add CabinetWallSnapper component
+        CabinetWallSnapper snapper = null;
+        
+        if (addWallSnapperComponent)
+        {
+            snapper = cabinetRoot.AddComponent<CabinetWallSnapper>();
+        }
+
+        // Find the selected wall
+        MozaikWall selectedWall = null;
+        
+        // Try to get from RuntimeWallSelector singleton
+        if (RuntimeWallSelector.Instance != null)
+        {
+            selectedWall = RuntimeWallSelector.Instance.SelectedWall;
+        }
+        else
+        {
+            // Fall back to finding one in the scene
+            RuntimeWallSelector wallSelector = FindFirstObjectByType<RuntimeWallSelector>();
+            if (wallSelector != null)
+            {
+                selectedWall = wallSelector.SelectedWall;
+            }
+        }
+
+        // If we have a snapper and a wall, set it up
+        if (snapper != null && selectedWall != null)
+        {
+            snapper.targetWall = selectedWall;
+
+            // Auto-snap if enabled
+            if (autoSnapToSelectedWall)
+            {
+                // Need to wait a frame for bounds to be calculated properly
+                // Use a coroutine or delay if in play mode, otherwise do it immediately
+                if (Application.isPlaying)
+                {
+                    // Schedule snap for next frame
+                    StartCoroutine(DelayedSnap(snapper));
+                }
+                else
+                {
+                    // In editor mode, snap immediately
+                    snapper.SnapToWall();
+                }
+
+                Debug.Log($"[MozImporterBounds] Auto-snapped '{cabinetRoot.name}' to wall '{selectedWall.name}'");
+            }
+            else
+            {
+                Debug.Log($"[MozImporterBounds] CabinetWallSnapper added to '{cabinetRoot.name}', target wall: '{selectedWall.name}' (not auto-snapped)");
+            }
+        }
+        else if (snapper != null)
+        {
+            Debug.Log($"[MozImporterBounds] CabinetWallSnapper added to '{cabinetRoot.name}' (no wall selected - assign manually or select a wall first)");
+        }
+
+        // Update cabinet data with target wall reference
+        if (cabinetData != null && selectedWall != null)
+        {
+            cabinetData.TargetWall = selectedWall;
+        }
+    }
+
+    /// <summary>
+    /// Coroutine to snap after a frame delay (allows bounds to calculate properly).
+    /// </summary>
+    private System.Collections.IEnumerator DelayedSnap(CabinetWallSnapper snapper)
+    {
+        yield return null; // Wait one frame
+        
+        if (snapper != null)
+        {
+            snapper.SnapToWall();
+        }
     }
 }

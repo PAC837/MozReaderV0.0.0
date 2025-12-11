@@ -8,6 +8,7 @@ using UnityEngine;
 /// - Cabinet's back (-Z face of bounds) touches wall's front (+Z face)
 /// - Cabinet's bottom aligns with floor + elevation (from MozCabinetData)
 /// - Cabinet's left edge aligns with wall's left edge (or next to existing cabinets)
+/// - Cabinet is rotated to face the room (front toward +Z, back toward wall)
 /// 
 /// Usage:
 /// 1. Attach this component to your cabinet root
@@ -28,6 +29,19 @@ public class CabinetWallSnapper : MonoBehaviour
     [Tooltip("Manual elevation override (mm). Used if no MozCabinetData or useElevationFromData is false.")]
     public float manualElevationMm = 0f;
 
+    [Tooltip("Automatically rotate cabinet to face the room when snapping.")]
+    public bool autoRotateToFaceRoom = true;
+
+    [Header("Debug Visualization")]
+    [Tooltip("Show orientation arrows in Scene view (front=blue, back=red, left=green, right=yellow).")]
+    public bool showOrientationGizmos = true;
+
+    [Tooltip("Length of debug arrows in meters.")]
+    public float gizmoArrowLength = 0.3f;
+
+    [Tooltip("Print detailed orientation info to console when snapping.")]
+    public bool debugLogOrientation = true;
+
     [Header("Debug Info (Read-Only)")]
     [Tooltip("The calculated bounds of this cabinet.")]
     [SerializeField] private Bounds _cabinetBounds;
@@ -37,6 +51,12 @@ public class CabinetWallSnapper : MonoBehaviour
 
     [Tooltip("The elevation used in the last snap (mm).")]
     [SerializeField] private float _lastElevationUsedMm;
+
+    [Tooltip("Cabinet's current forward direction (local +Z in world space).")]
+    [SerializeField] private Vector3 _currentForward;
+
+    [Tooltip("Cabinet's current Y rotation in degrees.")]
+    [SerializeField] private float _currentYRotation;
 
     // Cached references
     private Renderer _boundsRenderer;
@@ -98,6 +118,7 @@ public class CabinetWallSnapper : MonoBehaviour
 
     /// <summary>
     /// Snaps this cabinet to the target wall.
+    /// - Rotates cabinet to face room (if autoRotateToFaceRoom is enabled)
     /// - Back (-Z) of cabinet touches front (+Z) of wall
     /// - Bottom of cabinet aligns with floor + elevation (from MozCabinetData or manual)
     /// - Left edge of cabinet aligns with wall's left edge
@@ -112,9 +133,22 @@ public class CabinetWallSnapper : MonoBehaviour
             return;
         }
 
+        // STEP 1: Rotate cabinet to face the room FIRST (before getting bounds)
+        // This ensures the bounds are calculated with correct orientation
+        if (autoRotateToFaceRoom)
+        {
+            RotateToFaceRoom();
+        }
+
         if (!TryGetCabinetBounds(out Bounds cabinetBounds))
         {
             return;
+        }
+
+        // Log orientation before snap if debug enabled
+        if (debugLogOrientation)
+        {
+            LogOrientationDebugInfo();
         }
 
         // Get elevation from MozCabinetData or manual setting
@@ -190,22 +224,179 @@ public class CabinetWallSnapper : MonoBehaviour
         return null;
     }
 
-    // Draw gizmos to visualize the snap target in Scene view
+    /// <summary>
+    /// Logs detailed orientation info to the console for debugging.
+    /// Call this from the Inspector button or via context menu.
+    /// </summary>
+    [ContextMenu("Log Orientation Debug Info")]
+    public void LogOrientationDebugInfo()
+    {
+        if (!TryGetCabinetBounds(out Bounds bounds))
+        {
+            Debug.LogWarning("[CabinetWallSnapper] Cannot log orientation - no bounds found.");
+            return;
+        }
+
+        // Update debug fields
+        _currentForward = transform.forward;
+        _currentYRotation = transform.eulerAngles.y;
+
+        // Calculate cabinet face positions
+        Vector3 center = bounds.center;
+        float halfDepth = bounds.size.z * 0.5f;
+        
+        Vector3 frontFaceCenter = center + Vector3.forward * halfDepth;  // +Z world
+        Vector3 backFaceCenter = center + Vector3.back * halfDepth;      // -Z world
+
+        Debug.Log($"[CabinetWallSnapper] Orientation Debug for '{gameObject.name}':\n" +
+                  $"  Transform Position: {transform.position}\n" +
+                  $"  Transform Rotation: {transform.eulerAngles} (Y={_currentYRotation:F1}°)\n" +
+                  $"  Transform Forward: {_currentForward}\n" +
+                  $"  ---\n" +
+                  $"  Bounds Center: {center}\n" +
+                  $"  Bounds Size: {bounds.size}\n" +
+                  $"  Bounds Min (back/bottom/left): {bounds.min}\n" +
+                  $"  Bounds Max (front/top/right): {bounds.max}\n" +
+                  $"  ---\n" +
+                  $"  Front Face Center (+Z): {frontFaceCenter}\n" +
+                  $"  Back Face Center (-Z): {backFaceCenter}\n" +
+                  (targetWall != null ? $"  ---\n  Wall Front Face Z: {targetWall.GetFrontFaceZ()}\n" : ""));
+    }
+
+    /// <summary>
+    /// Rotates the cabinet so its front faces the room (away from wall).
+    /// For a standard wall (facing +Z), the cabinet should have back toward -Z.
+    /// </summary>
+    [ContextMenu("Rotate to Face Room")]
+    public void RotateToFaceRoom()
+    {
+        if (targetWall == null)
+        {
+            Debug.LogWarning("[CabinetWallSnapper] No target wall assigned. Cabinet will face +Z (world forward).");
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.Undo.RecordObject(transform, "Rotate Cabinet to Face Room");
+#endif
+
+        // For a wall along X axis (standard), cabinet should face +Z (into room)
+        // This means cabinet local -Z (back) faces the wall
+        // Simple solution: Set rotation to identity (facing +Z)
+        // TODO: Support walls at different angles
+        
+        Quaternion targetRotation = Quaternion.identity; // Faces +Z
+
+        if (targetWall != null)
+        {
+            // Get wall's forward direction (wall front faces +Z by default)
+            Vector3 wallForward = targetWall.transform.forward;
+            // Cabinet should face the same direction as wall (into room)
+            targetRotation = Quaternion.LookRotation(wallForward, Vector3.up);
+        }
+
+        transform.rotation = targetRotation;
+
+        // Update debug fields
+        _currentForward = transform.forward;
+        _currentYRotation = transform.eulerAngles.y;
+
+        if (debugLogOrientation)
+        {
+            Debug.Log($"[CabinetWallSnapper] Rotated '{gameObject.name}' to face room.\n" +
+                      $"  New rotation: {transform.eulerAngles}\n" +
+                      $"  Forward direction: {transform.forward}");
+        }
+    }
+
+    // Draw gizmos to visualize the snap target and orientation in Scene view
     private void OnDrawGizmosSelected()
     {
-        if (targetWall == null) return;
+        // Update debug fields for inspector display
+        _currentForward = transform.forward;
+        _currentYRotation = transform.eulerAngles.y;
 
-        // Draw a line from cabinet center to wall
-        if (TryGetCabinetBounds(out Bounds bounds))
+        if (!TryGetCabinetBounds(out Bounds bounds))
+            return;
+
+        Vector3 center = bounds.center;
+
+        // Draw cabinet bounds
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireCube(center, bounds.size);
+
+        // Draw orientation arrows if enabled
+        if (showOrientationGizmos)
+        {
+            float arrowLen = gizmoArrowLength;
+            
+            // FRONT (+Z) - Blue arrow (door side, faces into room)
+            Gizmos.color = Color.blue;
+            Vector3 frontDir = Vector3.forward;
+            Vector3 frontStart = center;
+            Vector3 frontEnd = frontStart + frontDir * arrowLen;
+            Gizmos.DrawLine(frontStart, frontEnd);
+            DrawArrowHead(frontEnd, frontDir, Color.blue, arrowLen * 0.2f);
+
+            // BACK (-Z) - Red arrow (against wall)
+            Gizmos.color = Color.red;
+            Vector3 backDir = Vector3.back;
+            Vector3 backStart = center;
+            Vector3 backEnd = backStart + backDir * arrowLen;
+            Gizmos.DrawLine(backStart, backEnd);
+            DrawArrowHead(backEnd, backDir, Color.red, arrowLen * 0.2f);
+
+            // LEFT (-X) - Green arrow
+            Gizmos.color = Color.green;
+            Vector3 leftDir = Vector3.left;
+            Vector3 leftStart = center;
+            Vector3 leftEnd = leftStart + leftDir * arrowLen * 0.5f;
+            Gizmos.DrawLine(leftStart, leftEnd);
+
+            // RIGHT (+X) - Yellow arrow
+            Gizmos.color = Color.yellow;
+            Vector3 rightDir = Vector3.right;
+            Vector3 rightStart = center;
+            Vector3 rightEnd = rightStart + rightDir * arrowLen * 0.5f;
+            Gizmos.DrawLine(rightStart, rightEnd);
+
+            // Draw face labels using handles (editor only)
+#if UNITY_EDITOR
+            UnityEditor.Handles.color = Color.blue;
+            UnityEditor.Handles.Label(frontEnd + Vector3.up * 0.05f, "FRONT (+Z)");
+            
+            UnityEditor.Handles.color = Color.red;
+            UnityEditor.Handles.Label(backEnd + Vector3.up * 0.05f, "BACK (-Z)");
+#endif
+        }
+
+        // Draw line to wall if assigned
+        if (targetWall != null)
         {
             Gizmos.color = Color.yellow;
-            Vector3 cabinetCenter = bounds.center;
             Vector3 wallCenter = targetWall.transform.position;
-            Gizmos.DrawLine(cabinetCenter, wallCenter);
-
-            // Draw cabinet bounds
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireCube(bounds.center, bounds.size);
+            Gizmos.DrawLine(center, wallCenter);
         }
+    }
+
+    /// <summary>
+    /// Draws an arrowhead at the specified position.
+    /// </summary>
+    private void DrawArrowHead(Vector3 position, Vector3 direction, Color color, float size)
+    {
+        Gizmos.color = color;
+        
+        // Simple arrowhead using perpendicular lines
+        Vector3 right = Vector3.Cross(direction, Vector3.up).normalized;
+        if (right.magnitude < 0.001f)
+            right = Vector3.Cross(direction, Vector3.forward).normalized;
+        
+        Vector3 up = Vector3.Cross(right, direction).normalized;
+        
+        Vector3 arrowBack = position - direction * size;
+        
+        Gizmos.DrawLine(position, arrowBack + right * size * 0.5f);
+        Gizmos.DrawLine(position, arrowBack - right * size * 0.5f);
+        Gizmos.DrawLine(position, arrowBack + up * size * 0.5f);
+        Gizmos.DrawLine(position, arrowBack - up * size * 0.5f);
     }
 }

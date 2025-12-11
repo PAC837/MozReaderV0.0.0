@@ -3,7 +3,7 @@ using UnityEditor;
 
 /// <summary>
 /// Custom Inspector for CabinetWallSnapper.
-/// Provides a "Snap to Wall" button in the Inspector panel.
+/// Provides buttons for snapping, rotation, and debug functions.
 /// </summary>
 [CustomEditor(typeof(CabinetWallSnapper))]
 public class CabinetWallSnapperEditor : Editor
@@ -25,7 +25,10 @@ public class CabinetWallSnapperEditor : Editor
                 MessageType.Warning);
         }
 
-        // Snap to Wall button
+        // === MAIN ACTION BUTTONS ===
+        EditorGUILayout.LabelField("Actions", EditorStyles.boldLabel);
+
+        // Snap to Wall button (requires wall)
         EditorGUI.BeginDisabledGroup(snapper.targetWall == null);
         
         GUI.backgroundColor = new Color(0.4f, 0.8f, 0.4f); // Green tint
@@ -36,6 +39,30 @@ public class CabinetWallSnapperEditor : Editor
         GUI.backgroundColor = Color.white;
         
         EditorGUI.EndDisabledGroup();
+
+        // Rotate to Face Room button (works without wall, but uses wall direction if available)
+        GUI.backgroundColor = new Color(0.6f, 0.6f, 0.9f); // Blue tint
+        if (GUILayout.Button("Rotate to Face Room", GUILayout.Height(24)))
+        {
+            snapper.RotateToFaceRoom();
+        }
+        GUI.backgroundColor = Color.white;
+
+        EditorGUILayout.Space(10);
+
+        // === DEBUG SECTION ===
+        EditorGUILayout.LabelField("Debug Tools", EditorStyles.boldLabel);
+        
+        EditorGUILayout.BeginHorizontal();
+        
+        GUI.backgroundColor = new Color(0.9f, 0.9f, 0.6f); // Yellow tint
+        if (GUILayout.Button("Log Orientation Info"))
+        {
+            snapper.LogOrientationDebugInfo();
+        }
+        GUI.backgroundColor = Color.white;
+        
+        EditorGUILayout.EndHorizontal();
 
         EditorGUILayout.Space(5);
 

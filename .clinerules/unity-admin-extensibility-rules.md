@@ -1,175 +1,150 @@
-# Unity Admin & Extensibility Rules (SingleDraw / Room Designer)
+# unity-admin-extensibility-rules.md
 
-You are Cline, an AI coding assistant working on SingleDraw / room-designer style tools in Unity.
+Goal: make it easy to build an **admin panel later** without rewriting the app.
 
-These rules define how to keep the app **future-friendly** for an eventual **admin panel** and user-controlled configuration, without over-engineering everything today.
+Admin users should eventually be able to:
 
-High-level goals:
+- Change key visual and behavior settings.
+- Manage catalogs of placeable objects.
 
-- Major visual and behavioral options should be **centralized and data-driven**, not scattered as hard-coded constants.
-- The app should be able to support a future **Admin UI** where:
-  - An admin user can adjust key settings (colors, units, snapping behavior, etc.).
-  - An admin user can add or manage **user objects / catalog items** without rewriting core logic.
-
-You are **not** required to build the admin panel now, but you **must** design new features so that an admin panel can be added later without a full rewrite.
+You’re not building the admin UI now—just making sure the code is ready for it.
 
 ---
 
-## 1. Centralized Configuration, Not Magic Constants
+## 1. Canonical Config: `AppConfig`
 
-When introducing new settings that impact app-wide behavior or visuals (especially ones a future admin might want to tweak):
+Use a single root ScriptableObject:
 
-- **Do not**:
-  - Hard-code the value in multiple scripts.
-  - Copy-paste the same constant across the codebase.
+- `AppConfig`
+  - `VisualConfig`
+  - `BehaviorConfig`
+  - `CatalogConfig`
 
-- **Do**:
-  - Define the setting in a **single source of truth**, such as:
-    - A ScriptableObject (e.g., `AppConfig`, `VisualConfig`, `BehaviorConfig`).
-    - A central static config class (if ScriptableObjects are not practical).
-  - Access it via that config object everywhere.
+These are the **only** canonical config types for this purpose. All other docs refer to them by these names.
 
-Prefer a structure like:
+### 1.1 VisualConfig
 
-- `AppConfig` (top-level):
-  - `VisualConfig` (colors, theme, line thickness, grid opacity, etc.).
-  - `BehaviorConfig` (snapping, default units, angle increments, etc.).
-  - `CatalogConfig` or `LibraryConfig` (object catalogs, default sets, etc.).
+Holds visual tokens:
 
-When adding a new setting that might make sense in an admin panel later, explain briefly in your change summary where in config it lives.
+- Color tokens (as in UI style rules).
+- Line thickness, grid opacity.
+- Theme-related flags if needed.
 
----
+UI and visuals should **read from** `VisualConfig`, not from scattered constants.
 
-## 2. Visual Options & Theming
+### 1.2 BehaviorConfig
 
-These rules complement the UI Style rules and focus on **admin-ready theming**.
+Holds behavior knobs:
 
-- Visual settings that an admin may eventually want to change (examples):
-  - Color tokens (primary, accent, background, panel background, selection highlight).
-  - Grid color and opacity.
-  - Line thickness / edge highlight styles.
-  - Default theme (light/dark modes, if supported later).
+- Units (in/mm).
+- Snap increments (grid, angle).
+- Default wall heights, depths, panel thickness.
+- Global flags:
+  - Show dimensions / rulers.
+  - Allow overlapping / collision checking.
 
-For such settings:
+Code that needs these values should go through `BehaviorConfig`.
 
-1. Represent them in a `VisualConfig` or equivalent ScriptableObject.
-2. Have the UI and rendering systems **read from the config**, not from hard-coded colors.
-3. Avoid tying visual options to specific scenes or prefabs; they should be controlled from a central config so a future admin panel can edit that config.
+### 1.3 CatalogConfig
 
-If you must introduce a new “visual constant,” first consider whether it belongs in `VisualConfig`. If yes, add it there.
+Holds catalogs of objects/presets (ScriptableObjects or serializable assets):
 
----
+- Entries with:
+  - ID/key.
+  - Display name.
+  - Category.
+  - Prefab reference.
+  - Metadata (dimensions, tags, placement rules).
 
-## 3. Behavior Options (Units, Snapping, Constraints)
-
-Behavior-level options a future admin might control include:
-
-- Default units (e.g., inches vs mm).
-- Grid spacing and snap increments.
-- Angle snapping options.
-- Default wall height, cabinet depth, or other basic design defaults.
-- Toggles such as:
-  - “Enable collision checking”
-  - “Allow overlapping objects”
-  - “Show dimension guides”
-
-When implementing or extending these behaviors:
-
-1. Represent them via **config flags or numeric fields** in `BehaviorConfig` (or equivalent).
-2. Make the runtime systems read from `BehaviorConfig` at runtime, not from hard-coded values.
-3. When a new behavior is clearly global (affects everything), keep its setting in one central place so an admin panel could change it.
-
-Avoid wiring behavior deeply into a single monolithic manager with hard-coded branching; favor smaller, data-driven switches that can be toggled via config.
+The goal: adding a new object later should mostly mean “add an entry + prefab”, not “add a new `if` in 10 places”.
 
 ---
 
-## 4. Object / Catalog Extensibility (User-Addable Objects)
+## 2. No Scattered Magic Constants for Admin Stuff
 
-The app should be able to support a future where **admin users can add their own objects** to a catalog/library.
+If a value:
 
-To make that possible, follow these guidelines when working on object systems:
+- Would reasonably be changed by an admin (visual feel, units, snapping, defaults), or
+- Affects what objects users can place,
 
-1. **Treat objects as data entries**, not special cases in code.
-   - Use ScriptableObjects, JSON, or another serializable format to define:
-     - Object ID / key
-     - Display name
-     - Category (e.g., cabinets, walls, fixtures)
-     - Associated prefab(s)
-     - Metadata (dimensions, tags, behaviors, etc.).
+…it belongs in `VisualConfig`, `BehaviorConfig`, or `CatalogConfig`, **not** hard-coded in many scripts.
 
-2. **Avoid hard-coding specific object types** throughout the codebase:
-   - Do not write long `if`/`switch` chains scattered across multiple files that check for specific IDs or names.
-   - Instead, use:
-     - A registry/lookup (e.g., `ObjectCatalog`, `PrefabRegistry`) keyed by ID.
-     - Interfaces or components that encode behavior (e.g., `IPlaceableObject`, `ICanSnapToWall`).
+If you keep something as an internal constant (e.g., tiny epsilon for float comparisons), say so in your Change Summary:
 
-3. **Design for new objects without code changes**:
-   - New object types should ideally be created by:
-     - Adding a new entry to a catalog asset / config file.
-     - Assigning components / behaviors via prefab composition.
-   - Code should work off these abstractions instead of needing a new `case` block for each object whenever possible.
-
-When you must add an object-specific exception, call it out and describe how it might be generalized later (e.g., via metadata or interfaces).
+> “Kept `<X>` as an internal constant (not admin-configurable) because `<reason>`.”
 
 ---
 
-## 5. Future Admin Panel: What You’re Preparing For
+## 3. Objects as Data, Not Branches
 
-You are not building the admin panel now, but you are **preparing** the codebase for it by:
+When working on “objects in the room”:
 
-- Ensuring there is:
-  - A central `AppConfig` / set of config ScriptableObjects.
-  - A catalog or registry structure for objects.
-- Keeping configs and catalogs structured so they can be:
-  - Edited by tools or UI later.
-  - Serialized and saved per project/user if needed.
+- Treat them as data-driven where possible:
+  - Catalog entries + prefabs + components.
+- Avoid long `switch`/`if` chains on IDs/names scattered around.
 
-When you add new configuration that is likely to appear in the admin panel:
+Prefer:
 
-1. Add it to the appropriate config asset/class.
-2. Add a brief note to a doc such as `docs/ADMIN_CONFIG.md` (if it exists) describing:
-   - The setting’s name.
-   - What it controls.
-   - Expected value range or options.
+- A central registry (from `CatalogConfig`) that maps IDs → prefab/config.
+- Interfaces/components to describe capabilities:
+  - `IPlaceableObject`
+  - `ISnapToWall`
+  - `IHasDimensions`, etc.
 
-If `docs/ADMIN_CONFIG.md` does not exist yet and you introduce several admin-worthy settings, you may create it with a simple structure:
-
-- **Section per config type**
-- Bullet list of setting names and descriptions.
+Object-specific behavior should live on the prefab/components, not in a giant manager class.
 
 ---
 
-## 6. Avoiding Over-Engineering
+## 4. Preparing for Admin UI
 
-These rules are **directional**, not a mandate to wrap every tiny value in a config layer.
+Make configs naturally UI-friendly:
 
-Use judgment:
+- Group related fields logically.
+- Use clear names and ranges.
+- Avoid deeply nested, weird data structures for core settings.
 
-- Things that are **clearly internal and unlikely to be admin-facing** (e.g., a small internal tolerance to avoid float jitter) do *not* need to go into admin-facing config.
-- Things that affect:
-  - Overall look and feel,
-  - User-level behavior,
-  - The set of available placeable objects,
+Optionally extend `docs/ADMIN_CONFIG.md` when you add new admin-worthy settings:
 
-  are strong candidates for central config and/or catalog structures.
-
-When in doubt, briefly mention in your summary:
-
-> “I treated `<X>` as an internal constant (not admin-configurable) because `<reason>`.”
+- Setting name.
+- Purpose.
+- Range/options.
+- Which config it lives in (`VisualConfig`, `BehaviorConfig`, `CatalogConfig`).
 
 ---
 
-## 7. Summary of Expectations
+## 5. Don’t Over-Engineer
 
-When you implement or modify features in this workspace:
+These rules are about **direction**, not turning everything into a config slider.
 
-- **Ask yourself**:
-  - “If we build an admin panel later, could it reasonably control this via a config or catalog?”
-- If the answer is “yes”:
-  - Put the relevant values into a central config or catalog.
-  - Access them data-first rather than hard-coding them all over.
+Good candidates for config:
+
+- Anything affecting user-visible look/feel.
+- Defaults and global behavior flags.
+- Which objects exist and how they appear.
+
+Bad candidates:
+
+- Deep internal implementation details.
+- One-off constants that are unlikely to change.
+
+When in doubt, ask:
+
+> “Would an admin realistically want to change this later?”
+
+If yes → config.  
+If no → keep it simple.
+
+---
+
+## 6. Workspace Expectation
+
+In this Unity workspace:
+
+- Use `AppConfig` and its child configs as the single source of truth.
+- Keep behaviors and objects wired through those configs/catalogs when they’re admin-relevant.
 - Continue to follow:
-  - The existing Unity rules for modularity, script length, and documentation.
-  - The UI style rules for consistent look & feel.
+  - `cline-global-rules.md`
+  - `unity-cline-rules.md`
+  - `unity-ui-style-rules.md`
 
-The goal is to make adding an admin panel later **a natural next step**, not a painful rewrite.
+So when it’s time to build an admin panel, it feels like a thin UI layer on top of a system that was ready for it all along.

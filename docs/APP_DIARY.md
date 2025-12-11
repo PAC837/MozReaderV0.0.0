@@ -4,6 +4,78 @@ Running development log for MozReaderV0.0.0.
 
 ---
 
+## [2025-12-10] RuntimeWallSelector & Auto-Snap System (MVP Complete!)
+
+### Summary
+- Added RuntimeWallSelector for runtime wall management and selection
+- Added RuntimeWallUI with big "ADD WALL" button
+- Cabinets imported via MozImporterBounds now auto-snap to the selected wall
+- Fixed Input System compatibility (uses InputSystemUIInputModule)
+- Fixed deprecated API warnings (FindObjectOfType → FindFirstObjectByType, etc.)
+
+### Files
+- `Assets/Scripts/RuntimeWallSelector.cs` – **NEW** Manages wall selection, creation, and provides singleton access
+- `Assets/Scripts/RuntimeWallUI.cs` – **NEW** Runtime UI with ADD WALL button and selected wall status
+- `Assets/Scripts/MozImporterBounds.cs` – Added auto-snap integration with RuntimeWallSelector
+
+### Behavior / Notes
+- **Wall Selection**: Click on a wall in Play mode to select it; selected wall is highlighted with a tint
+- **ADD WALL Button**: Creates a new wall at (0, 0, 0) with default dimensions; auto-selects the new wall
+- **Auto-Snap**: When `autoSnapToSelectedWall = true` (default), imported cabinets snap to the currently selected wall
+- **Events**: `OnWallSelected` and `OnWallCreated` events for other systems to react
+- **Singleton Access**: `RuntimeWallSelector.Instance` provides easy access from any script
+
+### Unity Implementation Checklist
+1. **Setup Scene Objects**
+   - Create empty GameObject named "Wall Manager"
+   - Add `RuntimeWallSelector` component
+   - Add `RuntimeWallUI` component (can be on same object or separate)
+
+2. **Test Steps**
+   - Play the scene
+   - Click "ADD WALL" button - wall appears at origin
+   - Click on wall to select it (should highlight)
+   - Use MozImporterBounds to import a cabinet
+   - Cabinet should auto-snap to the selected wall
+
+### Future Work
+- Connected walls at angles
+- Outside miters where walls connect
+- Wall positioning at different locations (not just origin)
+
+---
+
+## [2025-12-10] Cabinet Orientation Debug & Auto-Rotation
+
+### Summary
+- Added cabinet orientation debugging tools (gizmos, console logging)
+- Added `autoRotateToFaceRoom` option that automatically rotates cabinet when snapping
+- Cabinet front (+Z) now correctly faces into room, back (-Z) faces wall
+
+### Files
+- `Assets/Scripts/CabinetWallSnapper.cs` – Added debug visualization, `RotateToFaceRoom()`, auto-rotation in `SnapToWall()`
+- `Assets/Scripts/Editor/CabinetWallSnapperEditor.cs` – Added "Rotate to Face Room" and "Log Orientation Info" buttons
+
+### Behavior / Notes
+- **Debug Gizmos**: When cabinet is selected, shows colored arrows:
+  - Blue arrow = FRONT (+Z) - door side, faces into room
+  - Red arrow = BACK (-Z) - against wall
+  - Green arrow = LEFT (-X)
+  - Yellow arrow = RIGHT (+X)
+- **Auto-Rotation**: `autoRotateToFaceRoom = true` (default) rotates cabinet during snap
+- **Manual Rotation**: "Rotate to Face Room" button applies rotation without repositioning
+- **Debug Logging**: "Log Orientation Info" button prints detailed position/rotation info to console
+- **Inspector fields** show current forward direction and Y rotation in real-time
+
+### Test Steps
+1. Select a cabinet with `CabinetWallSnapper` component
+2. Observe orientation arrows in Scene view (if `showOrientationGizmos` is true)
+3. Click "Log Orientation Info" to see detailed console output
+4. Click "Snap to Wall" - cabinet should rotate to face room then position against wall
+5. If cabinet was facing wrong way, it should now face correctly into the room
+
+---
+
 ## [2025-12-10] Cabinet Snap to Wall with Elevation Support
 
 ### Summary
