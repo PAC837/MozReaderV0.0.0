@@ -79,12 +79,36 @@ public class MozImporterBounds : MonoBehaviour
         if (hasBounds)
         {
             CreateBoundsObject(root.transform, totalBounds);
-            Debug.Log($"[MozImporterBounds] Imported {cab.Parts.Count} parts into '{rootName}' with bounds size {totalBounds.size}.");
+
+            // Attach MozCabinetData component and populate from parsed data
+            MozCabinetData cabinetData = root.AddComponent<MozCabinetData>();
+            PopulateCabinetData(cabinetData, cab);
+
+            Debug.Log($"[MozImporterBounds] Imported {cab.Parts.Count} parts into '{rootName}' with bounds size {totalBounds.size}.\n" +
+                      $"  Elevation: {cab.ElevationMm}mm, Dimensions: {cab.WidthMm}x{cab.HeightMm}x{cab.DepthMm}mm");
         }
         else
         {
             Debug.LogWarning("[MozImporterBounds] No renderer bounds found for parts.");
         }
+    }
+
+    /// <summary>
+    /// Populates MozCabinetData component from parsed MozCabinet data.
+    /// </summary>
+    private void PopulateCabinetData(MozCabinetData data, MozCabinet cab)
+    {
+        data.UniqueID = cab.UniqueID;
+        data.ProductName = cab.Name;
+        data.SourceLibrary = cab.SourceLibrary;
+
+        data.WidthMm = cab.WidthMm;
+        data.HeightMm = cab.HeightMm;
+        data.DepthMm = cab.DepthMm;
+
+        data.ElevationMm = cab.ElevationMm;
+        data.XPositionMm = cab.XPositionMm;
+        data.WallRef = cab.WallRef;
     }
 
     private GameObject SpawnPart(Transform root, MozPart part)

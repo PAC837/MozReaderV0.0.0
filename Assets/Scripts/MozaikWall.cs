@@ -70,6 +70,8 @@ public class MozaikWall : MonoBehaviour
 
     /// <summary>
     /// Sync the wall visual to match mm dimensions (converted to meters).
+    /// The wall transform position represents the BOTTOM-CENTER of the wall.
+    /// This means placing the wall at Y=0 will have its bottom on the floor.
     /// </summary>
     public void SyncVisual()
     {
@@ -79,7 +81,9 @@ public class MozaikWall : MonoBehaviour
         float heightM  = Mathf.Max(0.001f, heightMm * 0.001f);
         float thickM   = Mathf.Max(0.001f, thicknessMm * 0.001f);
 
-        visual.transform.localPosition = Vector3.zero;
+        // Offset visual upward so wall bottom aligns with transform position
+        // Unity cube pivot is at center, so offset by half height
+        visual.transform.localPosition = new Vector3(0, heightM * 0.5f, 0);
         visual.transform.localRotation = Quaternion.identity;
         visual.transform.localScale    = new Vector3(lenM, heightM, thickM);
 
@@ -93,17 +97,57 @@ public class MozaikWall : MonoBehaviour
 
     /// <summary>
     /// Get the wall's start and end points in WORLD space (meters),
-    /// assuming pivot at center and wall length along local +X.
+    /// at the bottom of the wall (Y = transform.position.y).
+    /// Wall length runs along local +X.
     /// </summary>
     public void GetWorldEndpoints(out Vector3 worldStart, out Vector3 worldEnd)
     {
         float lenM = lengthMm * 0.001f;
         float half = lenM * 0.5f;
 
-        Vector3 center = transform.position;
-        Vector3 dir    = transform.right; // local +X
+        // Wall transform position is at bottom-center
+        Vector3 bottomCenter = transform.position;
+        Vector3 dir = transform.right; // local +X
 
-        worldStart = center - dir * half;
-        worldEnd   = center + dir * half;
+        worldStart = bottomCenter - dir * half;
+        worldEnd = bottomCenter + dir * half;
+    }
+
+    /// <summary>
+    /// Gets the Y position of the wall's bottom in world space (floor level).
+    /// Since the wall transform represents bottom-center, this is just transform.position.y
+    /// </summary>
+    public float GetFloorY()
+    {
+        return transform.position.y;
+    }
+
+    /// <summary>
+    /// Gets the Z position of the wall's front face (the +Z face, facing into the room).
+    /// </summary>
+    public float GetFrontFaceZ()
+    {
+        float thickM = thicknessMm * 0.001f;
+        // Wall transform is at bottom-center, front face is at +Z direction from center
+        return transform.position.z + (thickM * 0.5f);
+    }
+
+    /// <summary>
+    /// Gets the X position of the wall's left edge (start point).
+    /// </summary>
+    public float GetLeftEdgeX()
+    {
+        float lenM = lengthMm * 0.001f;
+        // Wall transform is at bottom-center, left edge is at -X direction
+        return transform.position.x - (lenM * 0.5f);
+    }
+
+    /// <summary>
+    /// Gets the X position of the wall's right edge (end point).
+    /// </summary>
+    public float GetRightEdgeX()
+    {
+        float lenM = lengthMm * 0.001f;
+        return transform.position.x + (lenM * 0.5f);
     }
 }

@@ -110,10 +110,27 @@ public class MozImporter : MonoBehaviour
 
 /// <summary>
 /// Container for a cabinet/job and its parts.
+/// Includes product-level metadata from the .moz file.
 /// </summary>
 public class MozCabinet
 {
     public string Name;
+
+    // Product-level metadata from <Product> element
+    public int UniqueID;
+    public string SourceLibrary;
+
+    // Overall dimensions (mm)
+    public float WidthMm;
+    public float HeightMm;
+    public float DepthMm;
+
+    // Positioning data (for import/export roundtrip)
+    public float ElevationMm;   // Elev attribute - distance from floor
+    public float XPositionMm;   // X attribute - position along wall
+    public float Rotation;      // Rot attribute
+    public string WallRef;      // Wall attribute (e.g., "1_1")
+
     public readonly List<MozPart> Parts = new List<MozPart>();
 }
 
@@ -229,7 +246,22 @@ public static class MozParser
         {
             Name = (string)root.Attribute("ProdName") ??
                    (string)root.Attribute("Name") ??
-                   "MozCabinet"
+                   "MozCabinet",
+
+            // Product-level metadata
+            UniqueID = AttrInt(root, "UniqueID"),
+            SourceLibrary = (string)root.Attribute("SourceLib") ?? "",
+
+            // Overall dimensions (mm)
+            WidthMm = AttrFloat(root, "Width"),
+            HeightMm = AttrFloat(root, "Height"),
+            DepthMm = AttrFloat(root, "Depth"),
+
+            // Positioning data
+            ElevationMm = AttrFloat(root, "Elev"),
+            XPositionMm = AttrFloat(root, "X"),
+            Rotation = AttrFloat(root, "Rot"),
+            WallRef = (string)root.Attribute("Wall") ?? ""
         };
 
         // Parts live under <CabProdParts><CabProdPart .../>
@@ -277,6 +309,18 @@ public static class MozParser
             return defaultValue;
 
         if (float.TryParse(a.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out float v))
+            return v;
+
+        return defaultValue;
+    }
+
+    private static int AttrInt(XElement el, string name, int defaultValue = 0)
+    {
+        XAttribute a = el.Attribute(name);
+        if (a == null)
+            return defaultValue;
+
+        if (int.TryParse(a.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v))
             return v;
 
         return defaultValue;

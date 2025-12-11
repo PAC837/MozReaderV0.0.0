@@ -6,8 +6,8 @@ using UnityEngine;
 /// 
 /// Snap behavior:
 /// - Cabinet's back (-Z face of bounds) touches wall's front (+Z face)
-/// - Cabinet's bottom aligns with wall's bottom
-/// - Cabinet's left edge aligns with wall's left edge (-X)
+/// - Cabinet's bottom aligns with floor + elevation (from MozCabinetData)
+/// - Cabinet's left edge aligns with wall's left edge (or next to existing cabinets)
 /// 
 /// Usage:
 /// 1. Attach this component to your cabinet root
@@ -21,6 +21,13 @@ public class CabinetWallSnapper : MonoBehaviour
     [Tooltip("The wall to snap this cabinet to.")]
     public MozaikWall targetWall;
 
+    [Header("Snap Settings")]
+    [Tooltip("Use elevation from MozCabinetData if available.")]
+    public bool useElevationFromData = true;
+
+    [Tooltip("Manual elevation override (mm). Used if no MozCabinetData or useElevationFromData is false.")]
+    public float manualElevationMm = 0f;
+
     [Header("Debug Info (Read-Only)")]
     [Tooltip("The calculated bounds of this cabinet.")]
     [SerializeField] private Bounds _cabinetBounds;
@@ -28,8 +35,12 @@ public class CabinetWallSnapper : MonoBehaviour
     [Tooltip("Was the last snap operation successful?")]
     [SerializeField] private bool _lastSnapSuccessful;
 
-    // Cached reference to the Bounds renderer
+    [Tooltip("The elevation used in the last snap (mm).")]
+    [SerializeField] private float _lastElevationUsedMm;
+
+    // Cached references
     private Renderer _boundsRenderer;
+    private MozCabinetData _cabinetData;
 
     /// <summary>
     /// Finds the Bounds child and returns its world-space bounds.
@@ -63,10 +74,33 @@ public class CabinetWallSnapper : MonoBehaviour
     }
 
     /// <summary>
+    /// Gets the elevation to use for snapping (in mm).
+    /// Checks MozCabinetData first if useElevationFromData is true.
+    /// </summary>
+    public float GetEffectiveElevationMm()
+    {
+        if (useElevationFromData)
+        {
+            // Try to get from MozCabinetData
+            if (_cabinetData == null)
+            {
+                _cabinetData = GetComponent<MozCabinetData>();
+            }
+
+            if (_cabinetData != null)
+            {
+                return _cabinetData.ElevationMm;
+            }
+        }
+
+        return manualElevationMm;
+    }
+
+    /// <summary>
     /// Snaps this cabinet to the target wall.
     /// - Back (-Z) of cabinet touches front (+Z) of wall
-    /// - Bottom of cabinet aligns with bottom of wall
-    /// - Left edge of cabinet aligns with left edge (-X) of wall
+    /// - Bottom of cabinet aligns with floor + elevation (from MozCabinetData or manual)
+    /// - Left edge of cabinet aligns with wall's left edge
     /// </summary>
     public void SnapToWall()
     {
@@ -83,32 +117,15 @@ public class CabinetWallSnapper : MonoBehaviour
             return;
         }
 
-        // Calculate wall position data (all in world space)
-        Transform wallTransform = targetWall.transform;
-        
-        // Wall dimensions in meters
-        float wallLengthM = targetWall.lengthMm * 0.001f;
-        float wallHeightM = targetWall.heightMm * 0.001f;
-        float wallThickM = targetWall.thicknessMm * 0.001f;
+        // Get elevation from MozCabinetData or manual setting
+        float elevationMm = GetEffectiveElevationMm();
+        float elevationM = elevationMm * 0.001f;
+        _lastElevationUsedMm = elevationMm;
 
-        // Wall pivot is at center. Calculate world positions of wall edges.
-        // Wall local +X is length direction, +Y is height, +Z is thickness
-        
-        // Wall front face Z (the +Z face of the wall, facing into the room)
-        // Wall center Z + half thickness
-        Vector3 wallCenter = wallTransform.position;
-        Vector3 wallForward = wallTransform.forward; // local +Z in world space
-        Vector3 wallRight = wallTransform.right;     // local +X in world space
-        Vector3 wallUp = wallTransform.up;           // local +Y in world space
-
-        // Wall front face position (center of front face)
-        Vector3 wallFrontCenter = wallCenter + wallForward * (wallThickM * 0.5f);
-        
-        // Wall left edge (-X from center)
-        float wallLeftX = wallCenter.x - (wallRight.x * wallLengthM * 0.5f);
-        
-        // Wall bottom Y (-Y from center)
-        float wallBottomY = wallCenter.y - (wallHeightM * 0.5f);
+        // Use wall helper methods for clean positioning
+        float wallFrontZ = targetWall.GetFrontFaceZ();
+        float wallLeftX = targetWall.GetLeftEdgeX();
+        float floorY = targetWall.GetFloorY();
 
         // Calculate current cabinet edge positions
         float cabinetBackZ = cabinetBounds.min.z;   // -Z face of cabinet
@@ -117,11 +134,11 @@ public class CabinetWallSnapper : MonoBehaviour
 
         // Calculate offsets needed to snap cabinet to wall
         // For Z: cabinet back should touch wall front
-        float targetCabinetBackZ = wallFrontCenter.z;
-        float zOffset = targetCabinetBackZ - cabinetBackZ;
+        float zOffset = wallFrontZ - cabinetBackZ;
 
-        // For Y: cabinet bottom should align with wall bottom
-        float yOffset = wallBottomY - cabinetBottomY;
+        // For Y: cabinet bottom should be at floor + elevation
+        float targetBottomY = floorY + elevationM;
+        float yOffset = targetBottomY - cabinetBottomY;
 
         // For X: cabinet left edge should align with wall left edge
         float xOffset = wallLeftX - cabinetLeftX;
@@ -137,7 +154,23 @@ public class CabinetWallSnapper : MonoBehaviour
         transform.position = newPosition;
         _lastSnapSuccessful = true;
 
+        // Update MozCabinetData if present
+        if (_cabinetData == null)
+        {
+            _cabinetData = GetComponent<MozCabinetData>();
+        }
+        if (_cabinetData != null)
+        {
+#if UNITY_EDITOR
+            UnityEditor.Undo.RecordObject(_cabinetData, "Update Cabinet Position Data");
+#endif
+            _cabinetData.TargetWall = targetWall;
+            _cabinetData.UpdateXPositionFromWorld();
+            _cabinetData.UpdateElevationFromWorld();
+        }
+
         Debug.Log($"[CabinetWallSnapper] Snapped '{gameObject.name}' to wall '{targetWall.gameObject.name}'.\n" +
+                  $"  Elevation: {elevationMm}mm ({elevationM:F4}m)\n" +
                   $"  Offset applied: ({xOffset:F4}, {yOffset:F4}, {zOffset:F4})\n" +
                   $"  New position: {newPosition}");
     }
