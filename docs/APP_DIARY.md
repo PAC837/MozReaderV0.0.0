@@ -4,6 +4,59 @@ Running development log for MozReaderV0.0.0.
 
 ---
 
+## [2025-12-11] Enhanced DES Export with Product Support
+
+### Summary
+- Enhanced `MozaikDesJobExporter` to export both walls AND cabinets/products
+- Added folder picker for easier Mozaik job selection
+- Cabinets export with position, elevation, wall reference, and dimensions
+
+### Files
+- `Assets/Scripts/MozaikDesJobExporter.cs` – Complete rewrite with product export support
+
+### Behavior / Notes
+- **Folder Picker**: Right-click > "Pick Mozaik Job Folder" opens folder browser, auto-detects Room1.des
+- **Export Options**: Toggle to export walls, products, or both
+- **Product Export**: Exports minimal required attributes for Mozaik to recognize:
+  - `UniqueID`, `ProdName`, `SourceLib`
+  - `X` (position along wall in mm)
+  - `Elev` (elevation from floor in mm)
+  - `Wall` (reference like "1_1")
+  - Dimensions: `Width`, `Height`, `Depth`
+- **Wall Reference Mapping**: Cabinets automatically get correct wall reference from their `TargetWall`
+- **Backup**: Creates `.FROMUNITY.bak` before overwriting
+
+### Context Menu Options
+- `Pick Mozaik Job Folder` – Browse to job folder
+- `Pick Room File Directly` – Select specific .des/.sbk file
+- `Export Room to Mozaik` – Run the export
+- `Open Job Folder in Explorer` – Quick access to files
+
+### Unity Implementation Checklist
+1. **Setup**
+   - Create empty GameObject named "Room Exporter"
+   - Add `MozaikDesJobExporter` component
+   
+2. **Configure**
+   - Right-click component > "Pick Mozaik Job Folder"
+   - Select your Mozaik job folder (must have Room1.des)
+
+3. **Export**
+   - Add walls to scene (MozaikWall components)
+   - Import cabinets and snap to walls
+   - Right-click > "Export Room to Mozaik"
+
+4. **Verify in Mozaik**
+   - Open the job in Mozaik Designer
+   - Check that walls and products appear at correct positions
+
+### Known Limitations
+- Products export as "position only" – Mozaik will rebuild construction details
+- Rotation not yet calculated from Unity transform
+- Single room export only (Room1.des)
+
+---
+
 ## [2025-12-10] RuntimeWallSelector & Auto-Snap System (MVP Complete!)
 
 ### Summary

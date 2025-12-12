@@ -131,6 +131,31 @@ public class MozCabinet
     public float Rotation;      // Rot attribute
     public string WallRef;      // Wall attribute (e.g., "1_1")
 
+    // Product type classification (from <ProductType> child element)
+    // Type 3 = Cabinet, Type 8 = Closet
+    // SubType varies: 3 = Tall, 21 = Floor Mount Panel, etc.
+    public int ProductType = 3;
+    public int ProductSubType = 3;
+    public int ProductSubSubType = 1;
+
+    // Construction settings
+    // CurrentConst: 0 = Faceframe, 1 = Frameless, 2 = Inset
+    public int CurrentConst = 0;
+    // Flags: 16-char binary string controlling sides, options, etc.
+    public string Flags = "1111111111111111";
+
+    // TopShapeXml: Full XML element controlling cabinet shape and end types
+    // Stored as string for roundtrip (includes ShapePoint children with EdgeType)
+    public string TopShapeXml = "";
+
+    // CabProdPartsXml: Full XML element containing all cabinet parts (shelves, rods, hangers)
+    // Stored as string for roundtrip
+    public string CabProdPartsXml = "";
+
+    // ProductInteriorXml: Full XML element containing Section layout (where shelves/rods go)
+    // Stored as string for roundtrip
+    public string ProductInteriorXml = "";
+
     public readonly List<MozPart> Parts = new List<MozPart>();
 }
 
@@ -263,6 +288,43 @@ public static class MozParser
             Rotation = AttrFloat(root, "Rot"),
             WallRef = (string)root.Attribute("Wall") ?? ""
         };
+
+        // Parse ProductType child element (e.g., <ProductType Type="8" SubType="21" SubSubType="1" />)
+        XElement productTypeElem = root.Element("ProductType");
+        if (productTypeElem != null)
+        {
+            cab.ProductType = AttrInt(productTypeElem, "Type", 3);
+            cab.ProductSubType = AttrInt(productTypeElem, "SubType", 3);
+            cab.ProductSubSubType = AttrInt(productTypeElem, "SubSubType", 1);
+        }
+
+        // Construction settings (from Product attributes)
+        cab.CurrentConst = AttrInt(root, "CurrentConst", 0);
+        cab.Flags = (string)root.Attribute("Flags") ?? "1111111111111111";
+
+        // TopShapeXml - store entire element as string for roundtrip
+        // This controls cabinet shape and end types (EdgeType values)
+        XElement topShapeElem = root.Element("TopShapeXml");
+        if (topShapeElem != null)
+        {
+            cab.TopShapeXml = topShapeElem.ToString();
+        }
+
+        // CabProdParts - store entire element as string for roundtrip
+        // Contains shelves, rods, hangers with positions
+        XElement cabProdPartsElem = root.Element("CabProdParts");
+        if (cabProdPartsElem != null)
+        {
+            cab.CabProdPartsXml = cabProdPartsElem.ToString();
+        }
+
+        // ProductInterior - store entire element as string for roundtrip
+        // Contains Section layout that defines where shelves/rods go
+        XElement productInteriorElem = root.Element("ProductInterior");
+        if (productInteriorElem != null)
+        {
+            cab.ProductInteriorXml = productInteriorElem.ToString();
+        }
 
         // Parts live under <CabProdParts><CabProdPart .../>
         foreach (XElement partElem in root.Descendants("CabProdPart"))

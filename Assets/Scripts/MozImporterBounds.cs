@@ -127,6 +127,24 @@ public class MozImporterBounds : MonoBehaviour
         data.HeightMm = cab.HeightMm;
         data.DepthMm = cab.DepthMm;
 
+        // Product type classification
+        data.ProductType = cab.ProductType;
+        data.ProductSubType = cab.ProductSubType;
+        data.ProductSubSubType = cab.ProductSubSubType;
+
+        // Construction settings
+        data.CurrentConst = cab.CurrentConst;
+        data.Flags = cab.Flags;
+
+        // Shape data for roundtrip
+        data.TopShapeXml = cab.TopShapeXml;
+
+        // Parts data for roundtrip (shelves, rods, hangers)
+        data.CabProdPartsXml = cab.CabProdPartsXml;
+
+        // Interior layout for roundtrip (Section definitions)
+        data.ProductInteriorXml = cab.ProductInteriorXml;
+
         data.ElevationMm = cab.ElevationMm;
         data.XPositionMm = cab.XPositionMm;
         data.WallRef = cab.WallRef;

@@ -31,6 +31,37 @@ public class MozCabinetData : MonoBehaviour
     [Tooltip("Overall cabinet depth (mm).")]
     public float DepthMm;
 
+    [Header("Product Type (Mozaik Classification)")]
+    [Tooltip("Mozaik product type (e.g., 3=Cabinet, 8=Closet).")]
+    public int ProductType = 3;
+
+    [Tooltip("Mozaik product sub-type (e.g., 3=Tall, 21=Floor Mount Panel).")]
+    public int ProductSubType = 3;
+
+    [Tooltip("Mozaik product sub-sub-type.")]
+    public int ProductSubSubType = 1;
+
+    [Header("Construction Settings")]
+    [Tooltip("Face style: 0=Faceframe, 1=Frameless, 2=Inset")]
+    public int CurrentConst = 0;
+
+    [Tooltip("16-bit flags controlling sides, options, etc. Stored as-is for roundtrip.")]
+    public string Flags = "1111111111111111";
+
+    [Header("Shape Data (XML Roundtrip)")]
+    [Tooltip("TopShapeXml from .moz file - controls cabinet shape and end types. Stored as XML string for roundtrip.")]
+    [TextArea(3, 6)]
+    public string TopShapeXml = "";
+
+    [Header("Parts Data (XML Roundtrip)")]
+    [Tooltip("CabProdParts from .moz file - contains shelves, rods, hangers with positions. Stored as XML string for roundtrip.")]
+    [TextArea(3, 8)]
+    public string CabProdPartsXml = "";
+
+    [Tooltip("ProductInterior from .moz file - contains Section layout (where shelves/rods go). Stored as XML string for roundtrip.")]
+    [TextArea(3, 8)]
+    public string ProductInteriorXml = "";
+
     [Header("Positioning")]
     [Tooltip("Elevation from floor (mm). Editable to adjust cabinet height.")]
     public float ElevationMm;
