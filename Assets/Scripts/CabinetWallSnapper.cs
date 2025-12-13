@@ -158,13 +158,34 @@ public class CabinetWallSnapper : MonoBehaviour
 
         // Use wall helper methods for clean positioning
         float wallFrontZ = targetWall.GetFrontFaceZ();
-        float wallLeftX = targetWall.GetLeftEdgeX();
         float floorY = targetWall.GetFloorY();
+
+        // Get wall endpoints to determine visual left/right
+        targetWall.GetWorldEndpoints(out Vector3 wallStart, out Vector3 wallEnd);
+        
+        // Determine which endpoint is the visual "left" based on world coordinates
+        // For X-aligned walls: left = lower X value
+        // For Z-aligned walls: left = lower Z value
+        bool isXAligned = Mathf.Abs(wallEnd.x - wallStart.x) > Mathf.Abs(wallEnd.z - wallStart.z);
+        Vector3 visualLeftEdgePos;
+        
+        if (isXAligned)
+        {
+            // Wall runs along X axis - visual left is whichever endpoint has HIGHER X
+            visualLeftEdgePos = (wallStart.x < wallEnd.x) ? wallEnd : wallStart;
+        }
+        else
+        {
+            // Wall runs along Z axis - visual left is whichever endpoint has HIGHER Z
+            visualLeftEdgePos = (wallStart.z < wallEnd.z) ? wallEnd : wallStart;
+        }
+        
+        float wallVisualLeftX = visualLeftEdgePos.x;
 
         // Calculate current cabinet edge positions
         float cabinetBackZ = cabinetBounds.min.z;   // -Z face of cabinet
         float cabinetBottomY = cabinetBounds.min.y; // Bottom of cabinet
-        float cabinetLeftX = cabinetBounds.min.x;   // Left edge of cabinet
+        float cabinetLeftX = cabinetBounds.max.x;   // Cabinet's visual LEFT edge (higher X = left for this wall)
 
         // Calculate offsets needed to snap cabinet to wall
         // For Z: cabinet back should touch wall front
@@ -174,8 +195,29 @@ public class CabinetWallSnapper : MonoBehaviour
         float targetBottomY = floorY + elevationM;
         float yOffset = targetBottomY - cabinetBottomY;
 
-        // For X: cabinet left edge should align with wall left edge
-        float xOffset = wallLeftX - cabinetLeftX;
+        // For X: Use XPositionMm from MozCabinetData if set, otherwise default to wall left edge
+        float xOffset;
+        if (_cabinetData != null && _cabinetData.XPositionMm > 0)
+        {
+            // Smart placement has set a specific position - use it
+            // Calculate wall direction (left to right)
+            Vector3 visualRightEdgePos = (visualLeftEdgePos == wallStart) ? wallEnd : wallStart;
+            Vector3 wallDirection = (visualRightEdgePos - visualLeftEdgePos).normalized;
+            
+            // Target position for cabinet LEFT EDGE
+            float targetXPositionM = _cabinetData.XPositionMm * 0.001f;
+            Vector3 targetLeftEdgePos = visualLeftEdgePos + wallDirection * targetXPositionM;
+            
+            xOffset = targetLeftEdgePos.x - cabinetLeftX;
+            
+            Debug.Log($"[CabinetWallSnapper] Using smart placement position: {_cabinetData.XPositionMm}mm");
+        }
+        else
+        {
+            // No specific position set - default to wall left edge
+            xOffset = wallVisualLeftX - cabinetLeftX;
+            Debug.Log($"[CabinetWallSnapper] No position set - defaulting to wall left edge");
+        }
 
         // Apply the offset to the cabinet root transform
         Vector3 newPosition = transform.position + new Vector3(xOffset, yOffset, zOffset);
@@ -323,6 +365,26 @@ public class CabinetWallSnapper : MonoBehaviour
         // Draw cabinet bounds
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireCube(center, bounds.size);
+
+        // Draw cabinet LEFT and RIGHT edge markers for debugging
+        Vector3 cabinetLeftEdge = new Vector3(bounds.max.x, center.y, center.z);
+        Vector3 cabinetRightEdge = new Vector3(bounds.min.x, center.y, center.z);
+        
+        // Yellow = LEFT edge (what we think is left)
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawSphere(cabinetLeftEdge, 0.1f);
+#if UNITY_EDITOR
+        UnityEditor.Handles.color = Color.yellow;
+        UnityEditor.Handles.Label(cabinetLeftEdge + Vector3.up * 0.2f, $"CAB LEFT\n(max.x={bounds.max.x:F2})");
+#endif
+
+        // Red = RIGHT edge (what we think is right)
+        Gizmos.color = Color.red;
+        Gizmos.DrawSphere(cabinetRightEdge, 0.1f);
+#if UNITY_EDITOR
+        UnityEditor.Handles.color = Color.red;
+        UnityEditor.Handles.Label(cabinetRightEdge + Vector3.up * 0.2f, $"CAB RIGHT\n(min.x={bounds.min.x:F2})");
+#endif
 
         // Draw orientation arrows if enabled
         if (showOrientationGizmos)

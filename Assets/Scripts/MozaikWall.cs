@@ -53,19 +53,14 @@ public class MozaikWall : MonoBehaviour
             visual.transform.SetParent(transform, false);
         }
 
-        // Remove collider so cabinets/etc can sit against it cleanly
-        var col = visual.GetComponent<Collider>();
-        if (col != null)
+        // Ensure collider exists for wall clicking (RuntimeWallSelector needs it)
+        // Make it a trigger so it doesn't interfere with physics/cabinet placement
+        var col = visual.GetComponent<BoxCollider>();
+        if (col == null)
         {
-#if UNITY_EDITOR
-            if (!Application.isPlaying)
-                GameObject.DestroyImmediate(col);
-            else
-                GameObject.Destroy(col);
-#else
-            GameObject.Destroy(col);
-#endif
+            col = visual.AddComponent<BoxCollider>();
         }
+        col.isTrigger = true; // Trigger = clickable but doesn't block physics
     }
 
     /// <summary>

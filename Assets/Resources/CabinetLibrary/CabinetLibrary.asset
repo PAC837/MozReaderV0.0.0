@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bea8638c99ab02143aade7ce7cc494d7, type: 3}
+  m_Name: CabinetLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::CabinetLibrary
+  cabinets:
+  - displayName: 87_DH
+    prefab: {fileID: 2229612013058768459, guid: f176bb485684f154599c96d7254eb39f, type: 3}
+    category: Cabinets
+    thumbnail: {fileID: 0}
+    productName: 87 DH
+    sourceLibrary: 1 PAC Closet Library V2
+    widthMm: 790.6
+    heightMm: 2196
+    depthMm: 356
+  - displayName: FS_87
+    prefab: {fileID: 3092107372688082799, guid: e0336b24d7ad98c46b699c5e96dd5a0e, type: 3}
+    category: Cabinets
+    thumbnail: {fileID: 0}
+    productName: FS 87
+    sourceLibrary: 1 PAC Closet Library V2
+    widthMm: 19
+    heightMm: 2196
+    depthMm: 356

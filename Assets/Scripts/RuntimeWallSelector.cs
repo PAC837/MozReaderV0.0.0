@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// Manages wall selection at runtime and provides wall creation functionality.
@@ -132,6 +133,14 @@ public class RuntimeWallSelector : MonoBehaviour
 
     private void HandleWallClick()
     {
+        // CRITICAL: Don't handle wall clicks if pointer is over UI
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            if (showDebugLogs)
+                Debug.Log("[RuntimeWallSelector] Click ignored - pointer is over UI.");
+            return;
+        }
+
         if (targetCamera == null)
         {
             if (showDebugLogs)
@@ -144,6 +153,15 @@ public class RuntimeWallSelector : MonoBehaviour
 
         if (Physics.Raycast(ray, out RaycastHit hit, maxRaycastDistance, wallRaycastLayers))
         {
+            // PRIORITY CHECK: If we hit a cabinet, let MozRuntimeSelector handle it (don't select wall)
+            MozBoundsHighlighter hitCabinet = hit.collider.GetComponentInParent<MozBoundsHighlighter>();
+            if (hitCabinet != null)
+            {
+                if (showDebugLogs)
+                    Debug.Log($"[RuntimeWallSelector] Hit cabinet '{hitCabinet.name}' - ignoring wall selection.");
+                return; // Cabinet selection takes priority
+            }
+
             // Check if we hit a wall
             MozaikWall hitWall = hit.collider.GetComponentInParent<MozaikWall>();
 
@@ -207,27 +225,46 @@ public class RuntimeWallSelector : MonoBehaviour
 
         // Find the wall's visual child
         Transform visualTransform = wall.transform.Find("WallVisual");
-        if (visualTransform == null) return;
+        if (visualTransform == null)
+        {
+            if (showDebugLogs)
+                Debug.LogWarning($"[RuntimeWallSelector] WallVisual child not found for {wall.name}");
+            return;
+        }
 
         Renderer renderer = visualTransform.GetComponent<Renderer>();
-        if (renderer == null) return;
+        if (renderer == null)
+        {
+            if (showDebugLogs)
+                Debug.LogWarning($"[RuntimeWallSelector] No Renderer on WallVisual for {wall.name}");
+            return;
+        }
 
         if (highlighted)
         {
-            // Store original and apply tint
-            _originalWallMaterial = renderer.sharedMaterial;
+            // Store original material
+            if (renderer.sharedMaterial != null)
+            {
+                _originalWallMaterial = renderer.sharedMaterial;
+            }
             
-            // Create a temporary material with the tint
-            Material tintedMaterial = new Material(renderer.sharedMaterial);
-            tintedMaterial.color = selectedWallTint;
-            renderer.material = tintedMaterial;
+            // Create a new material instance with the tint
+            Material highlightMat = new Material(Shader.Find("Standard"));
+            highlightMat.color = selectedWallTint;
+            renderer.material = highlightMat;
+            
+            if (showDebugLogs)
+                Debug.Log($"[RuntimeWallSelector] Applied highlight to {wall.name}");
         }
         else
         {
             // Restore original material
             if (_originalWallMaterial != null)
             {
-                renderer.sharedMaterial = _originalWallMaterial;
+                renderer.material = _originalWallMaterial;
+                
+                if (showDebugLogs)
+                    Debug.Log($"[RuntimeWallSelector] Removed highlight from {wall.name}");
             }
         }
     }

@@ -4,6 +4,47 @@ Running development log for MozReaderV0.0.0.
 
 ---
 
+## [2025-12-11] Fixed Cabinet Positioning for All Wall Orientations
+
+### Summary
+- Fixed visual left/right determination for walls at any orientation
+- Position calculation now measures from visual LEFT endpoint (not hardcoded wallStart)
+- Added cabinet edge debug markers (yellow=left, red=right)
+- Export to Mozaik now positions cabinets correctly
+
+### Files
+- `Assets/Scripts/CabinetWallSnapper.cs` – Fixed visual left logic to use correct endpoint based on wall orientation
+- `Assets/Scripts/MozCabinetData.cs` – Fixed UpdateXPositionFromWorld to measure from visual left; updated gizmo visualization
+
+### Behavior / Notes
+- **Visual Left/Right Determination**: For X-aligned walls, visual left = higher X value; for Z-aligned walls, visual left = higher Z value
+- **Position Calculation**: Now measures distance from visual LEFT edge to cabinet LEFT edge (was always using wallStart)
+- **Wall Direction**: Direction vector now goes from visual left → visual right for correct positive distance
+- **Debug Markers on Cabinet**: 
+  - Yellow ball = cabinet LEFT edge (bounds.max.x for X-aligned walls)
+  - Red ball = cabinet RIGHT edge (bounds.min.x)
+- **Gizmo Visualization**: Magenta measurement line now starts from wall's yellow marker (visual left)
+- **Export**: XPositionMm now exports correct distance for Mozaik to position cabinet properly
+
+### The Bug
+Previously, the system always measured from `wallStart` regardless of which endpoint was the visual "left". For a wall running from X=-3.48 to X=0.52:
+- Visual left is at X=0.52 (wallEnd)
+- But code measured from X=-3.48 (wallStart)
+- This gave wrong distance for Mozaik export
+
+### The Fix
+1. Determine which endpoint is visual left based on coordinate values
+2. Measure from THAT endpoint (not always wallStart)
+3. Update both snapper and position calculator to use same logic
+4. Update gizmos to visualize the actual calculation
+
+### Test Steps
+1. Snap cabinet to wall - yellow markers should touch (wall left = cabinet left)
+2. Check console log - should show measurement from "Visual Left Edge"
+3. Export to DES - cabinet should appear at correct position in Mozaik
+
+---
+
 ## [2025-12-11] Enhanced DES Export with Product Support
 
 ### Summary
@@ -162,3 +203,34 @@ Running development log for MozReaderV0.0.0.
 - Auto-placement next to existing cabinets
 - Upper cabinet stacking on lowers
 - Drag-to-adjust elevation in scene view
+
+## [2025-12-11] Complete XML Roundtrip for DES Export
+
+### Summary
+- Added full XML roundtrip for cabinet data from .moz files
+- TopShapeXml (cabinet shape, end types) preserved on export
+- CabProdPartsXml (shelves, rods, hangers) preserved on export
+- ProductInteriorXml (section layout) preserved on export
+- ProductType, CurrentConst, Flags now correctly exported
+
+### Files
+- `MozCabinetData.cs` – Added TopShapeXml, CabProdPartsXml, ProductInteriorXml fields
+- `MozImporter.cs` – Parse all XML elements from .moz file
+- `MozImporterBounds.cs` – Copy XML data to cabinet component
+- `MozaikDesJobExporter.cs` – Export stored XML or use defaults
+
+### Behavior / Notes
+- XML elements stored as strings for lossless roundtrip
+- Shelves, closet rods, hangers export with correct positions
+- Interior section layout preserved (controls where parts go in Mozaik)
+- End types (EdgeType="14" = nothing) preserved via TopShapeXml
+
+### Key Fields Roundtripped
+| Field | Purpose |
+|-------|---------|
+| TopShapeXml | Cabinet shape, corner points, EdgeType values |
+| CabProdPartsXml | All parts (F.Shelf, ClosetRod, Hanger, etc.) |
+| ProductInteriorXml | Section layout with DivideType definitions |
+| ProductType | Type/SubType/SubSubType classification |
+| CurrentConst | 0=Faceframe, 1=Frameless, 2=Inset |
+| Flags | 16-bit binary string for options |

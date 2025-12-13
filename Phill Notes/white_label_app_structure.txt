@@ -1,0 +1,96 @@
+WHITE-LABEL APP STRUCTURE – REFERENCE DOCUMENT
+==============================================
+
+GOAL:
+Create a scalable white‑label system where multiple companies get their own branded version of your design/configurator app WITHOUT maintaining multiple codebases.
+
+------------------------------------------------------------
+1. SINGLE SHARED CODEBASE
+------------------------------------------------------------
+• You write the app ONCE.  
+• All companies run their own “instance” of the same code.  
+• Differences between companies come from configuration files, not different versions of code.
+
+This prevents duplication and makes updates easy.
+
+------------------------------------------------------------
+2. CONFIG FILES (PER COMPANY)
+------------------------------------------------------------
+Each company gets its own config folder (example: /configs/companyA).
+
+Configs may include:
+• Colors  
+• Logos  
+• Feature flags  
+• Product lists  
+• Branding  
+• Tooling options  
+• Pricing rules  
+• Anything custom per client  
+
+The app loads a different config depending on which company is logging in.
+
+------------------------------------------------------------
+3. AUTHENTICATION OPTIONS
+------------------------------------------------------------
+There are two main ways to do authentication:
+
+### OPTION A – ONE GLOBAL LOGIN (Single Sign-On)
+• Only ONE login service exists.  
+• All companies authenticate against the same system.  
+• Cleaner, simpler, easier to maintain.  
+• Users are separated by tenant/company IDs.
+
+### OPTION B – SEPARATE AUTH INSTANCES PER COMPANY
+• Each company gets its own login portal.  
+• More isolated, more private, more “white‑label pure.”  
+• Slightly more setup per company.  
+• You still use the SAME AUTH CODEBASE, but deploy it multiple times.
+
+This is what you want for PAC white‑label setups.
+
+------------------------------------------------------------
+4. ADMIN DASHBOARD FOR CONFIGS
+------------------------------------------------------------
+Instead of digging through code, you will have a visual Admin Dashboard that lets you:
+
+• Select which company you’re editing  
+• Use dropdowns to change branding (logos, colors)  
+• Toggle features on/off  
+• Change product lists  
+• Adjust tool groups  
+• Save configuration safely  
+
+This makes the system accessible and prevents editing JSON files manually.
+
+This dashboard can be built later — the important thing is that the architecture allows it.
+
+------------------------------------------------------------
+5. HOW BIG COMPANIES DO THIS
+------------------------------------------------------------
+Major SaaS and white‑label systems follow this pattern:
+
+• One central codebase  
+• Per‑client configurations  
+• Optional per‑client auth instances  
+• Visual config dashboard  
+• Automated deployments per client  
+
+You are building a simplified version of the same proven pattern.
+
+------------------------------------------------------------
+6. WHAT TO REMEMBER WHEN YOU COME BACK TO THIS
+------------------------------------------------------------
+When you're ready to implement:
+
+(1) You’ll create a repo for the *main app*.  
+(2) You’ll create a repo for the *auth service* (reusable across companies).  
+(3) Each new company gets:
+    • A config folder  
+    • (Optional) a deployed auth instance  
+    • A deployed version of the main app reading their config  
+(4) The Admin Dashboard will read/write config files visually.
+
+------------------------------------------------------------
+This is the full architectural baseline for your future PAC apps.
+Save this file and refer back when you start building authentication or deployment.

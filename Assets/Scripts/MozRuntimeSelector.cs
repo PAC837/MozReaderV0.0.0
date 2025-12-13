@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// Handles click selection in the Game view using the new Input System.
@@ -24,18 +25,41 @@ public class MozRuntimeSelector : MonoBehaviour
 
     [Header("Debug")]
     [Tooltip("Show debug information in console.")]
-    public bool showDebugLogs = false;
+    public bool showDebugLogs = true; // ALWAYS ON for debugging
 
     private MozBoundsHighlighter _currentSelection;
     
     // New Input System references
     private Mouse mouse;
 
+    // Singleton pattern
+    public static MozRuntimeSelector Instance { get; private set; }
+
     private void Awake()
     {
+        // Singleton setup
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else if (Instance != this)
+        {
+            Debug.LogWarning("[MozRuntimeSelector] Multiple instances detected. Destroying duplicate.");
+            Destroy(gameObject);
+            return;
+        }
+
         if (targetCamera == null)
         {
             targetCamera = Camera.main;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
         }
     }
 
@@ -58,6 +82,14 @@ public class MozRuntimeSelector : MonoBehaviour
 
     private void HandleClick()
     {
+        // CRITICAL: Don't handle clicks if pointer is over UI (prevents clearing selection when clicking buttons!)
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+        {
+            if (showDebugLogs)
+                Debug.Log("[MozRuntimeSelector] Click ignored - pointer is over UI.");
+            return;
+        }
+
         if (targetCamera == null)
         {
             if (showDebugLogs)
@@ -70,7 +102,7 @@ public class MozRuntimeSelector : MonoBehaviour
         Ray ray = targetCamera.ScreenPointToRay(mousePosition);
 
         if (showDebugLogs)
-            Debug.Log($"[MozRuntimeSelector] Raycasting from mouse position: {mousePosition}");
+            Debug.Log($"[CLICK] MozRuntimeSelector: Mouse at {mousePosition}, raycasting...");
 
         // Raycast with layer filtering
         if (Physics.Raycast(ray, out RaycastHit hit, maxDistance, raycastLayers))
