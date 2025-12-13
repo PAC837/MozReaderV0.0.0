@@ -103,9 +103,23 @@ public class TextureLibraryManager : MonoBehaviour
                 return null;
             }
 
-            // Create material using Standard shader
-            Material material = new Material(Shader.Find("Standard"));
+            // Create material using URP Lit shader (Standard doesn't work in URP)
+            Shader urpShader = Shader.Find("Universal Render Pipeline/Lit");
+            if (urpShader == null)
+            {
+                Debug.LogWarning($"[TextureLibraryManager] URP Lit shader not found! Trying fallback shaders...");
+                // Try alternative shader names
+                urpShader = Shader.Find("Universal Render Pipeline/Simple Lit");
+                if (urpShader == null)
+                {
+                    urpShader = Shader.Find("Unlit/Texture");
+                }
+            }
+            
+            Material material = new Material(urpShader);
             material.mainTexture = texture;
+            
+            Debug.Log($"[TextureLibraryManager] Created material with shader: '{material.shader.name}' for texture: '{Path.GetFileName(filePath)}'");
 
             // Extract display name (filename without extension)
             string fileName = Path.GetFileName(filePath);

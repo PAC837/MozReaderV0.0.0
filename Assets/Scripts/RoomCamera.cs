@@ -47,8 +47,8 @@ public class RoomCamera : MonoBehaviour
             currentDistance = Vector3.Distance(transform.position, targetPosition);
         }
         
-        // LEFT CLICK - PAN
-        if (mouse.leftButton.isPressed)
+        // MIDDLE CLICK - PAN (changed from left to avoid conflict with selection)
+        if (mouse.middleButton.isPressed)
         {
             float h = -mouseDelta.x * panSpeed * Time.deltaTime * currentDistance * 0.01f;
             float v = -mouseDelta.y * panSpeed * Time.deltaTime * currentDistance * 0.01f;

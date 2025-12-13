@@ -4,6 +4,84 @@ Running development log for MozReaderV0.0.0.
 
 ---
 
+## [2025-12-12] Selection System Fixes & Texture Picker Debug
+
+### Summary
+- Fixed critical freeze/crash when clicking between cabinets (destroyed LineRenderer bug)
+- Improved wireframe bounds to perfectly fit cabinet geometry
+- Added folder browse button to TextureLibraryManager for easier configuration
+- Fixed pink material issue with URP shader compatibility
+- Added comprehensive debug logging for texture/shader diagnosis
+- Fixed camera controls conflict (pan moved to middle mouse)
+
+### Files
+- `Assets/Scripts/MozBoundsHighlighter.cs` – Fixed null reference crash, added CalculateCabinetBounds() for tight wireframe fit
+- `Assets/Scripts/MozRuntimeSelector.cs` – Added SelectedCabinet property and OnSelectionChanged event
+- `Assets/Scripts/CabinetMaterialApplicator.cs` – Fixed void return bug, added material debug logging
+- `Assets/Scripts/RoomCamera.cs` – Changed pan from LEFT to MIDDLE mouse button
+- `Assets/Scripts/TextureLibraryManager.cs` – Changed shader to URP Lit, added shader detection and debug
+- `Assets/Scripts/Editor/TextureLibraryManagerEditor.cs` – **NEW** Custom Inspector with "Browse Folder..." button
+
+### Behavior / Notes
+
+**Selection Freeze Fix:**
+- **Root Cause**: When selecting different cabinets, old wireframe LineRenderers were destroyed but remained cached in `_cabinetRenderers` array. Accessing `.materials` on destroyed objects caused `MissingReferenceException` → freeze.
+- **Solution**: Added `if (rend == null)` and `if (rend is LineRenderer)` checks in all material application loops
+- **Impact**: Can now rapidly click between cabinets without freezing
+
+**Wireframe Improvements:**
+- **Old Behavior**: Used `boundsRenderer.bounds` (the oversized dummy Bounds object)
+- **New Behavior**: `CalculateCabinetBounds()` calculates from actual mesh geometry
+- **Result**: Wireframe perfectly fits cabinet (no gap above/below)
+- **Exclusions**: Skips Bounds object, corners, wireframes, rods, inserts, hardware
+
+**Texture System UX:**
+- **Folder Browse Button**: Inspector now has big "Browse Folder..." button
+- **Auto-Update**: Selecting folder automatically updates path field
+- **No Copy/Paste**: Click → browse → done!
+
+**URP Shader Compatibility:**
+- **Problem**: Materials used "Standard" shader (doesn't exist in URP) → pink materials
+- **Solution**: Changed to "Universal Render Pipeline/Lit"
+- **Fallbacks**: Tries "Simple Lit" then "Unlit/Texture" if Lit not found
+- **Debug**: Logs shader name for each loaded texture
+
+**Camera Controls Fix:**
+- **Problem**: LEFT CLICK used by both selection and camera pan → conflicts
+- **Solution**: Moved pan to MIDDLE MOUSE button
+- **New Controls**: 
+  - LEFT = select cabinets
+  - MIDDLE = pan camera
+  - RIGHT = orbit camera
+  - WHEEL = zoom
+- **Industry Standard**: Matches Blender/Maya/CAD apps
+
+**Debug Logging:**
+- **TextureLibraryManager**: Logs shader found/used for each texture
+- **CabinetMaterialApplicator**: Logs material name, shader, texture presence when applying
+- **Purpose**: Diagnose shader/texture issues without guessing
+
+### Unity Implementation Notes
+**After updating from Git:**
+1. Unity will auto-recompile new Editor script
+2. Select "Texture Library Manager" GameObject
+3. See new "Browse Folder..." button in Inspector
+4. Click button → select texture folder → done
+5. Right-click component → "Reload Textures"
+6. Play mode → textures should work (no more pink if URP shaders exist)
+
+### Test Steps
+1. **Test Selection**: Click between cabinets rapidly - should not freeze
+2. **Test Wireframe**: Select cabinet - green lines should fit perfectly (no gaps)
+3. **Test Textures**: Apply material - should show color (not pink)
+4. **Test Camera**: MIDDLE mouse drag to pan (no conflict with LEFT click selection)
+
+### Known Issues
+- `[DEBUG MODE]` Many console logs - for diagnosis only, can be reduced later
+- Pink materials indicate URP Lit shader not found (rare in URP projects)
+
+---
+
 ## [2025-12-12] Material Picker System & Wireframe Selection Improvements
 
 ### Summary

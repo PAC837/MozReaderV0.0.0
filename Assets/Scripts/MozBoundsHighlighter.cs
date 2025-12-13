@@ -197,8 +197,10 @@ public class MozBoundsHighlighter : MonoBehaviour
             int materialCount = 0;
             foreach (Renderer rend in _cabinetRenderers)
             {
+                if (rend == null) continue; // Skip destroyed renderers (e.g., old wireframes)
                 if (rend == boundsRenderer) continue; // Skip bounds
                 if (cornerRenderers != null && System.Array.IndexOf(cornerRenderers, rend) >= 0) continue; // Skip corners
+                if (rend is LineRenderer) continue; // Skip wireframe lines
                 materialCount += rend.materials.Length;
             }
 
@@ -207,8 +209,10 @@ public class MozBoundsHighlighter : MonoBehaviour
 
             foreach (Renderer rend in _cabinetRenderers)
             {
+                if (rend == null) continue; // Skip destroyed renderers
                 if (rend == boundsRenderer) continue;
                 if (cornerRenderers != null && System.Array.IndexOf(cornerRenderers, rend) >= 0) continue;
+                if (rend is LineRenderer) continue; // Skip wireframe lines
 
                 Material[] materials = rend.materials;
                 for (int i = 0; i < materials.Length; i++)
@@ -222,8 +226,10 @@ public class MozBoundsHighlighter : MonoBehaviour
         int matIndex = 0;
         foreach (Renderer rend in _cabinetRenderers)
         {
+            if (rend == null) continue; // Skip destroyed renderers
             if (rend == boundsRenderer) continue;
             if (cornerRenderers != null && System.Array.IndexOf(cornerRenderers, rend) >= 0) continue;
+            if (rend is LineRenderer) continue; // Skip wireframe lines
 
             Material[] materials = rend.materials;
             Material[] transparentMaterials = new Material[materials.Length];
@@ -250,6 +256,7 @@ public class MozBoundsHighlighter : MonoBehaviour
             if (rend == null) continue;
             if (rend == boundsRenderer) continue;
             if (cornerRenderers != null && System.Array.IndexOf(cornerRenderers, rend) >= 0) continue;
+            if (rend is LineRenderer) continue; // Skip wireframe lines
 
             Material[] materials = rend.materials;
             Material[] restoredMaterials = new Material[materials.Length];
@@ -296,14 +303,61 @@ public class MozBoundsHighlighter : MonoBehaviour
     }
 
     /// <summary>
+    /// Calculates tight-fitting bounds from actual cabinet mesh geometry.
+    /// Excludes Bounds object, corners, wireframes, and hardware.
+    /// </summary>
+    private Bounds CalculateCabinetBounds()
+    {
+        Bounds combinedBounds = new Bounds(transform.position, Vector3.zero);
+        bool boundsInitialized = false;
+
+        // Get all renderers
+        Renderer[] renderers = GetComponentsInChildren<Renderer>();
+
+        foreach (Renderer rend in renderers)
+        {
+            // Skip excluded objects
+            if (rend == null) continue;
+            if (rend == boundsRenderer) continue; // Skip Bounds object
+            if (cornerRenderers != null && System.Array.IndexOf(cornerRenderers, rend) >= 0) continue;
+            if (rend is LineRenderer) continue; // Skip wireframes
+            
+            // Skip hardware/rods based on name
+            string objName = rend.gameObject.name;
+            if (objName.Contains("Rod", System.StringComparison.OrdinalIgnoreCase) ||
+                objName.Contains("Insert", System.StringComparison.OrdinalIgnoreCase) ||
+                objName.Contains("Hardware", System.StringComparison.OrdinalIgnoreCase) ||
+                objName.Contains("Hanger", System.StringComparison.OrdinalIgnoreCase) ||
+                objName.Contains("Wireframe", System.StringComparison.OrdinalIgnoreCase) ||
+                objName.Contains("Edge", System.StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // Include this renderer's bounds
+            if (!boundsInitialized)
+            {
+                combinedBounds = rend.bounds;
+                boundsInitialized = true;
+            }
+            else
+            {
+                combinedBounds.Encapsulate(rend.bounds);
+            }
+        }
+
+        return combinedBounds;
+    }
+
+    /// <summary>
     /// Creates 12 LineRenderers to draw a wireframe box around the cabinet bounds.
     /// </summary>
     private void CreateWireframeIfNeeded()
     {
         if (_wireframeLines != null) return; // Already created
 
-        // Get bounds from the Bounds renderer
-        Bounds bounds = boundsRenderer.bounds;
+        // Calculate bounds from actual cabinet geometry (not the Bounds object)
+        Bounds bounds = CalculateCabinetBounds();
 
         // Inflate bounds
         Vector3 size = bounds.size * boundsInflation;
@@ -356,7 +410,12 @@ public class MozBoundsHighlighter : MonoBehaviour
             lr.positionCount = 2;
             lr.startWidth = lineWidth;
             lr.endWidth = lineWidth;
-            lr.material = new Material(Shader.Find("Sprites/Default")); // Simple unlit shader
+            
+            // Use Unlit/Color shader for bright, always-visible lines
+            Material lineMat = new Material(Shader.Find("Unlit/Color"));
+            lineMat.color = wireframeColor;
+            lr.material = lineMat;
+            
             lr.startColor = wireframeColor;
             lr.endColor = wireframeColor;
             lr.useWorldSpace = true;

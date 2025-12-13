@@ -512,6 +512,11 @@ MonoBehaviour:
   boundsRenderer: {fileID: 0}
   cornerRenderers: []
   showInPlayMode: 1
+  selectedCabinetAlpha: 0.1
+  selectedBoundsAlpha: 0.4
+  boundsInflation: 1.02
+  wireframeColor: {r: 0, g: 1, b: 0, a: 0.6}
+  lineWidth: 0.005
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -561,6 +566,37 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1260033058
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1260033059}
+  m_Layer: 0
+  m_Name: GameObject
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1260033059
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1260033058}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -13.5601, y: -17.68033, z: -32.78702}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1360703742
 GameObject:
   m_ObjectHideFlags: 0
@@ -596,6 +632,7 @@ MonoBehaviour:
   addWallButton: {fileID: 0}
   selectedWallText: {fileID: 0}
   cabinetDropdown: {fileID: 0}
+  deleteCabinetButton: {fileID: 0}
   buttonSize: {x: 200, y: 60}
   buttonFontSize: 24
   buttonColor: {r: 0.2, g: 0.6, b: 0.2, a: 1}
@@ -769,3 +806,4 @@ SceneRoots:
   - {fileID: 1849101005}
   - {fileID: 1360703745}
   - {fileID: 2017314082}
+  - {fileID: 1260033059}

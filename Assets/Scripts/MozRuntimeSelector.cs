@@ -35,6 +35,12 @@ public class MozRuntimeSelector : MonoBehaviour
     // Singleton pattern
     public static MozRuntimeSelector Instance { get; private set; }
 
+    // Public API for accessing selected cabinet
+    public GameObject SelectedCabinet => _currentSelection?.gameObject;
+
+    // Event fired when selection changes
+    public event System.Action OnSelectionChanged;
+
     private void Awake()
     {
         // Singleton setup
@@ -132,6 +138,9 @@ public class MozRuntimeSelector : MonoBehaviour
                 _currentSelection.SetRuntimeSelected(true);
                 if (showDebugLogs)
                     Debug.Log($"[MozRuntimeSelector] Selected: {_currentSelection.name}");
+                
+                // Fire selection changed event
+                OnSelectionChanged?.Invoke();
             }
             else
             {
@@ -160,6 +169,9 @@ public class MozRuntimeSelector : MonoBehaviour
             if (showDebugLogs)
                 Debug.Log($"[MozRuntimeSelector] Cleared selection: {_currentSelection.name}");
             _currentSelection = null;
+            
+            // Fire selection changed event
+            OnSelectionChanged?.Invoke();
         }
     }
 

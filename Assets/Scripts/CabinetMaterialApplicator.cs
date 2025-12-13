@@ -50,7 +50,7 @@ public class CabinetMaterialApplicator : MonoBehaviour
 
         foreach (MozCabinetData cabinet in allCabinets)
         {
-            int partsChanged = ApplyMaterialToCabinet(cabinet.gameObject, material);
+            int partsChanged = ApplyMaterialToCabinetInternal(cabinet.gameObject, material);
             if (partsChanged > 0)
             {
                 cabinetCount++;
@@ -71,6 +71,13 @@ public class CabinetMaterialApplicator : MonoBehaviour
             Debug.LogError("[CabinetMaterialApplicator] Cannot apply: cabinet or material is null.");
             return;
         }
+
+        // Debug material details
+        Debug.Log($"[CabinetMaterialApplicator] Applying material:" +
+                  $"\n  Name: '{material.name}'" +
+                  $"\n  Shader: '{material.shader.name}'" +
+                  $"\n  Has Texture: {material.mainTexture != null}" +
+                  $"\n  Texture Name: '{(material.mainTexture != null ? material.mainTexture.name : "null")}'");
 
         int partCount = ApplyMaterialToCabinetInternal(cabinet, material);
         Debug.Log($"[CabinetMaterialApplicator] Applied material '{material.name}' to {partCount} parts on cabinet '{cabinet.name}'.");

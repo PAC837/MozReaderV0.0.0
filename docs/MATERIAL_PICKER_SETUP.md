@@ -29,8 +29,10 @@ Create 3 empty GameObjects in your scene:
 1. Create empty GameObject named "Texture Library Manager"
 2. Add `TextureLibraryManager` component
 3. Configure:
-   - **Textures Folder Path** (Admin): `C:/Users/info/Dropbox/PAC Library HQ/Textures/Colors`
-   - Or use: `Mozaik Files Examples/Textures/Colors` (for testing)
+   - Click **"Browse Folder..."** button
+   - Navigate to your textures folder (e.g., `Mozaik Files Examples/Textures/Colors`)
+   - Select folder → Done!
+   - (Or manually type path in **Textures Folder Path** field if preferred)
 
 #### B. Cabinet Material Applicator
 1. Create empty GameObject named "Cabinet Material Applicator"
