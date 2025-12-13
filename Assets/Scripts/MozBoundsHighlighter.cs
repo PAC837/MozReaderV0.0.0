@@ -32,24 +32,31 @@ public class MozBoundsHighlighter : MonoBehaviour
     public float selectedBoundsAlpha = 0.4f;
 
     [Header("Bounds Visualization")]
-    [Tooltip("How much to inflate bounds scale (1.02 = 2% larger).")]
+    [Tooltip("How much to inflate bounds (1.0 = same size, 1.02 = 2% larger).")]
     [Range(1f, 1.1f)]
-    public float boundsInflation = 1.02f;
+    public float boundsInflation = 1.0f;
+
+    [Tooltip("Color of selection wireframe lines.")]
+    public Color wireframeColor = new Color(0f, 1f, 0f, 0.9f); // Green with 90% alpha
+
+    [Tooltip("Width of wireframe lines.")]
+    [Range(0.001f, 0.02f)]
+    public float lineWidth = 0.005f;
 
     // Runtime selection flag (used in Play mode)
     private bool _runtimeSelected = false;
 
     // Store original materials for restoring
     private Material[] _originalCabinetMaterials;
-    private Material _originalBoundsMaterial;
     private Renderer[] _cabinetRenderers;
 
     // Track if transparency is currently applied (to avoid re-applying every frame)
     private bool _transparencyApplied = false;
     private bool _lastBoundsState = false;
 
-    // Track bounds original scale for inflation
-    private Vector3 _originalBoundsScale = Vector3.zero;
+    // Wireframe line renderers (12 edges of a cube)
+    private LineRenderer[] _wireframeLines = null;
+    private GameObject _wireframeContainer = null;
 
     private void OnEnable()
     {
@@ -125,41 +132,32 @@ public class MozBoundsHighlighter : MonoBehaviour
         }
 #endif
 
-        // Apply visibility and scale to bounds renderer
-        boundsRenderer.enabled = shouldShowBounds;
-
-        // Inflate or restore bounds scale
-        if (shouldShowBounds)
+        // Hide old bounds renderer (we use wireframe lines instead)
+        if (boundsRenderer != null)
         {
-            // Store original scale if first time
-            if (_originalBoundsScale == Vector3.zero)
-            {
-                _originalBoundsScale = boundsRenderer.transform.localScale;
-                Debug.Log($"[MozBoundsHighlighter] Stored original bounds scale: {_originalBoundsScale}");
-            }
-
-            // Apply inflation
-            boundsRenderer.transform.localScale = _originalBoundsScale * boundsInflation;
-        }
-        else
-        {
-            // Restore original scale when hiding
-            if (_originalBoundsScale != Vector3.zero)
-            {
-                boundsRenderer.transform.localScale = _originalBoundsScale;
-            }
+            boundsRenderer.enabled = false;
         }
 
-        // Apply same visibility to all corner renderers
+        // Hide corner renderers
         if (cornerRenderers != null)
         {
             foreach (Renderer cornerRenderer in cornerRenderers)
             {
                 if (cornerRenderer != null)
                 {
-                    cornerRenderer.enabled = shouldShowBounds;
+                    cornerRenderer.enabled = false;
                 }
             }
+        }
+
+        // Show/hide wireframe
+        if (shouldShowBounds)
+        {
+            CreateWireframeIfNeeded();
+        }
+        else
+        {
+            DestroyWireframe();
         }
 
         // CRITICAL: Only apply/remove transparency when state CHANGES (not every frame!)
@@ -237,17 +235,6 @@ public class MozBoundsHighlighter : MonoBehaviour
 
             rend.materials = transparentMaterials;
         }
-
-        // Apply transparency to bounds
-        if (_originalBoundsMaterial == null && boundsRenderer != null)
-        {
-            _originalBoundsMaterial = boundsRenderer.sharedMaterial;
-        }
-
-        if (boundsRenderer != null)
-        {
-            boundsRenderer.material = CreateTransparentMaterial(_originalBoundsMaterial, selectedBoundsAlpha);
-        }
     }
 
     /// <summary>
@@ -278,15 +265,8 @@ public class MozBoundsHighlighter : MonoBehaviour
             rend.materials = restoredMaterials;
         }
 
-        // Restore bounds material
-        if (_originalBoundsMaterial != null && boundsRenderer != null)
-        {
-            boundsRenderer.material = _originalBoundsMaterial;
-        }
-
         // Clear caches
         _originalCabinetMaterials = null;
-        _originalBoundsMaterial = null;
     }
 
     /// <summary>
@@ -313,6 +293,103 @@ public class MozBoundsHighlighter : MonoBehaviour
         transparentMat.color = color;
 
         return transparentMat;
+    }
+
+    /// <summary>
+    /// Creates 12 LineRenderers to draw a wireframe box around the cabinet bounds.
+    /// </summary>
+    private void CreateWireframeIfNeeded()
+    {
+        if (_wireframeLines != null) return; // Already created
+
+        // Get bounds from the Bounds renderer
+        Bounds bounds = boundsRenderer.bounds;
+
+        // Inflate bounds
+        Vector3 size = bounds.size * boundsInflation;
+        Vector3 center = bounds.center;
+
+        // Calculate 8 corners in world space
+        Vector3 halfSize = size * 0.5f;
+        Vector3[] corners = new Vector3[8];
+        
+        // Bottom 4 corners
+        corners[0] = center + new Vector3(-halfSize.x, -halfSize.y, -halfSize.z);
+        corners[1] = center + new Vector3(+halfSize.x, -halfSize.y, -halfSize.z);
+        corners[2] = center + new Vector3(+halfSize.x, -halfSize.y, +halfSize.z);
+        corners[3] = center + new Vector3(-halfSize.x, -halfSize.y, +halfSize.z);
+        
+        // Top 4 corners
+        corners[4] = center + new Vector3(-halfSize.x, +halfSize.y, -halfSize.z);
+        corners[5] = center + new Vector3(+halfSize.x, +halfSize.y, -halfSize.z);
+        corners[6] = center + new Vector3(+halfSize.x, +halfSize.y, +halfSize.z);
+        corners[7] = center + new Vector3(-halfSize.x, +halfSize.y, +halfSize.z);
+
+        // Create container GameObject
+        _wireframeContainer = new GameObject("SelectionWireframe");
+        _wireframeContainer.transform.SetParent(transform);
+        _wireframeContainer.transform.localPosition = Vector3.zero;
+        _wireframeContainer.transform.localRotation = Quaternion.identity;
+
+        // Create 12 line renderers (12 edges of cube)
+        _wireframeLines = new LineRenderer[12];
+
+        // Define the 12 edges (pairs of corner indices)
+        int[,] edges = new int[12, 2]
+        {
+            // Bottom face (4 edges)
+            {0, 1}, {1, 2}, {2, 3}, {3, 0},
+            // Top face (4 edges)
+            {4, 5}, {5, 6}, {6, 7}, {7, 4},
+            // Vertical edges (4 edges)
+            {0, 4}, {1, 5}, {2, 6}, {3, 7}
+        };
+
+        // Create each edge
+        for (int i = 0; i < 12; i++)
+        {
+            GameObject lineGO = new GameObject($"Edge{i}");
+            lineGO.transform.SetParent(_wireframeContainer.transform);
+            lineGO.transform.localPosition = Vector3.zero;
+
+            LineRenderer lr = lineGO.AddComponent<LineRenderer>();
+            lr.positionCount = 2;
+            lr.startWidth = lineWidth;
+            lr.endWidth = lineWidth;
+            lr.material = new Material(Shader.Find("Sprites/Default")); // Simple unlit shader
+            lr.startColor = wireframeColor;
+            lr.endColor = wireframeColor;
+            lr.useWorldSpace = true;
+
+            // Set line positions
+            lr.SetPosition(0, corners[edges[i, 0]]);
+            lr.SetPosition(1, corners[edges[i, 1]]);
+
+            _wireframeLines[i] = lr;
+        }
+
+        Debug.Log($"[MozBoundsHighlighter] Created wireframe with 12 lines for '{gameObject.name}'");
+    }
+
+    /// <summary>
+    /// Destroys the wireframe LineRenderers.
+    /// </summary>
+    private void DestroyWireframe()
+    {
+        if (_wireframeContainer != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(_wireframeContainer);
+            }
+            else
+            {
+                DestroyImmediate(_wireframeContainer);
+            }
+            _wireframeContainer = null;
+        }
+
+        _wireframeLines = null;
     }
 
     private Transform FindChildByName(Transform root, string name)

@@ -4,6 +4,84 @@ Running development log for MozReaderV0.0.0.
 
 ---
 
+## [2025-12-12] Material Picker System & Wireframe Selection Improvements
+
+### Summary
+- Implemented complete material/texture picker system with admin-configurable texture folder
+- Replaced bounds cube with clean 12-line wireframe visualization
+- Materials can be applied to entire room or individual selected cabinets
+- Auto-excludes hardware parts (rods, inserts, hangers)
+
+### Files
+- `Assets/Scripts/TextureLibraryManager.cs` – **NEW** Loads textures from folder, creates materials, singleton access
+- `Assets/Scripts/CabinetMaterialApplicator.cs` – **NEW** Applies materials to room or selected cabinet with smart filtering
+- `Assets/Scripts/TexturePickerUI.cs` – **NEW** UI with texture grid and apply buttons
+- `Assets/Scripts/MozBoundsHighlighter.cs` – Replaced inflated cube with 12 LineRenderer wireframe, 90% alpha
+- `docs/MATERIAL_PICKER_SETUP.md` – **NEW** Complete setup instructions for material system
+
+### Behavior / Notes
+
+**Material Picker System:**
+- **Admin Configuration**: Admin sets texture folder path in TextureLibraryManager
+- **Texture Loading**: Automatically loads all JPG/PNG files from folder on Start
+- **UI Grid**: Displays textures as preview squares in scrollable grid
+- **Dual Apply Modes**: 
+  - "Apply to Room" → changes all cabinets
+  - "Apply to Selected" → changes only selected cabinet
+- **Smart Filtering**: Excludes rods, inserts, hardware, hangers, bounds objects
+- **Live Linking**: Points to Mozaik's texture folder for real-time updates
+
+**Wireframe Selection:**
+- **Clean Visualization**: 12 green lines form cube edges (no solid mesh)
+- **World Space**: Lines use world coordinates → no camera movement artifacts
+- **Configurable**: Color (90% alpha green), width (0.005m), inflation (1.0 = exact size)
+- **Dynamic**: Created when selected, destroyed when deselected
+- **Performance**: No more material recreation every frame
+
+### Unity Implementation Checklist
+
+**Material System Setup:**
+1. Create 3 empty GameObjects:
+   - "Texture Library Manager" + TextureLibraryManager component
+   - "Cabinet Material Applicator" + CabinetMaterialApplicator component  
+   - "Texture Picker UI" + TexturePickerUI component
+
+2. Create UI Panel with:
+   - Scroll View (texture grid parent)
+   - Texture button prefab (80×80px)
+   - "Apply to Room" button
+   - "Apply to Selected" button
+
+3. Wire up references on TexturePickerUI:
+   - textureGridParent → Content object from Scroll View
+   - textureButtonPrefab → prefab from Assets
+   - applyToRoomButton → button reference
+   - applyToSelectedButton → button reference
+
+4. Configure TextureLibraryManager:
+   - Set texturesFolderPath (e.g., `C:/Users/info/Dropbox/PAC Library HQ/Textures/Colors`)
+   - Right-click → "Reload Textures"
+
+5. Test in Play mode:
+   - Texture grid populates automatically
+   - Click texture → highlights yellow
+   - Click "Apply to Room" → all cabinets change
+   - Select cabinet → "Apply to Selected" enables
+   - Click "Apply to Selected" → only that cabinet changes
+
+**Wireframe Selection:**
+- Existing cabinets with MozBoundsHighlighter automatically use new wireframe
+- Inspector fields: boundsInflation (1.0), wireframeColor (0,1,0,0.9), lineWidth (0.005)
+
+### Future Enhancements
+- Parse TextureGroups.dat for organized categories
+- Save material choice per cabinet (export to .des)
+- Material preview on hover
+- Search/filter textures by name
+- Custom PBR shader support
+
+---
+
 ## [2025-12-11] Fixed Cabinet Positioning for All Wall Orientations
 
 ### Summary
