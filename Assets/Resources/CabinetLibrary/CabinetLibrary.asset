@@ -31,3 +31,12 @@ MonoBehaviour:
     widthMm: 19
     heightMm: 2196
     depthMm: 356
+  - displayName: FS_87_LED_Right
+    prefab: {fileID: 7891906490051011738, guid: 0fe06f10ee6305c4489b47a9cebed048, type: 3}
+    category: Cabinets
+    thumbnail: {fileID: 0}
+    productName: FS 87 LED Right
+    sourceLibrary: 1 PAC Closet Library V2
+    widthMm: 19
+    heightMm: 2196
+    depthMm: 356

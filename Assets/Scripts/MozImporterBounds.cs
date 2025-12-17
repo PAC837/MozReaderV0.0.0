@@ -144,6 +144,7 @@ public class MozImporterBounds : MonoBehaviour
 
         // Interior layout for roundtrip (Section definitions)
         data.ProductInteriorXml = cab.ProductInteriorXml;
+        data.CabProdParmsXml = cab.CabProdParmsXml;
 
         data.ElevationMm = cab.ElevationMm;
         data.XPositionMm = cab.XPositionMm;

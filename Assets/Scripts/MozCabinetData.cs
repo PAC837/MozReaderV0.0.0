@@ -62,6 +62,11 @@ public class MozCabinetData : MonoBehaviour
     [TextArea(3, 8)]
     public string ProductInteriorXml = "";
 
+    [Header("Parameters Data (XML Roundtrip)")]
+    [Tooltip("CabProdParms from .moz file - contains product parameters (LEDConfig, etc). Required for parametric operations.")]
+    [TextArea(3, 8)]
+    public string CabProdParmsXml = "";
+
     [Header("Positioning")]
     [Tooltip("Elevation from floor (mm). Editable to adjust cabinet height.")]
     public float ElevationMm;

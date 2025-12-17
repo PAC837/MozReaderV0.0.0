@@ -44,13 +44,36 @@ public class CabinetLibrary : ScriptableObject
     }
 
     /// <summary>
-    /// Adds a new cabinet to the library.
+    /// Adds a new cabinet to the library, or updates if it already exists.
     /// </summary>
     public void AddCabinet(CabinetEntry entry)
     {
-        if (cabinets.Exists(c => c.displayName == entry.displayName))
+        int existingIndex = cabinets.FindIndex(c => c.displayName == entry.displayName);
+        
+        if (existingIndex >= 0)
         {
-            Debug.LogWarning($"[CabinetLibrary] Cabinet '{entry.displayName}' already exists in library.");
+            // Update existing entry (preserves prefab if new entry has one, keeps metadata fresh)
+            CabinetEntry existing = cabinets[existingIndex];
+            
+            // Update prefab if the new entry has one
+            if (entry.prefab != null)
+            {
+                existing.prefab = entry.prefab;
+            }
+            
+            // Always update metadata
+            existing.category = entry.category;
+            existing.productName = entry.productName;
+            existing.sourceLibrary = entry.sourceLibrary;
+            existing.widthMm = entry.widthMm;
+            existing.heightMm = entry.heightMm;
+            existing.depthMm = entry.depthMm;
+            existing.thumbnail = entry.thumbnail ?? existing.thumbnail;
+            
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(this);
+#endif
+            Debug.Log($"[CabinetLibrary] Updated existing entry '{entry.displayName}' in library.");
             return;
         }
 

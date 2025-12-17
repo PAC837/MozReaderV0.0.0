@@ -156,6 +156,10 @@ public class MozCabinet
     // Stored as string for roundtrip
     public string ProductInteriorXml = "";
 
+    // CabProdParmsXml: Full XML element containing product parameters (LEDConfig, etc.)
+    // Stored as string for roundtrip - required for parametric operations to work
+    public string CabProdParmsXml = "";
+
     public readonly List<MozPart> Parts = new List<MozPart>();
 }
 
@@ -324,6 +328,14 @@ public static class MozParser
         if (productInteriorElem != null)
         {
             cab.ProductInteriorXml = productInteriorElem.ToString();
+        }
+
+        // CabProdParms - store entire element as string for roundtrip
+        // Contains product parameters (LEDConfig, SysHoles, etc.) needed for parametric operations
+        XElement cabProdParmsElem = root.Element("CabProdParms");
+        if (cabProdParmsElem != null)
+        {
+            cab.CabProdParmsXml = cabProdParmsElem.ToString();
         }
 
         // Parts live under <CabProdParts><CabProdPart .../>

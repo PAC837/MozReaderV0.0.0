@@ -508,6 +508,18 @@ public class MozaikDesJobExporter : MonoBehaviour
                 {
                     XmlDocument tempDoc = new XmlDocument();
                     tempDoc.LoadXml(cab.CabProdPartsXml);
+                    
+                    // For PANELS (Type=8): Strip auto-generated operations, keep user operations
+                    // Mozaik will regenerate line bores, fasteners, etc. based on adjacency
+                    if (cab.ProductType == 8)
+                    {
+                        int removedCount = StripNonUserOperations(tempDoc, cab.ProductName);
+                        if (removedCount > 0)
+                        {
+                            Debug.Log($"[MozaikDesJobExporter] {cab.ProductName}: Stripped {removedCount} auto-generated operation(s), kept user operations");
+                        }
+                    }
+                    
                     XmlNode importedNode = doc.ImportNode(tempDoc.DocumentElement, true);
                     prodEl.AppendChild(importedNode);
                 }
@@ -524,8 +536,28 @@ public class MozaikDesJobExporter : MonoBehaviour
                 prodEl.AppendChild(cabProdParts);
             }
 
-            XmlElement cabProdParms = doc.CreateElement("CabProdParms");
-            prodEl.AppendChild(cabProdParms);
+            // CabProdParms - use stored XML if available, otherwise create empty element
+            if (!string.IsNullOrEmpty(cab.CabProdParmsXml))
+            {
+                try
+                {
+                    XmlDocument tempDoc = new XmlDocument();
+                    tempDoc.LoadXml(cab.CabProdParmsXml);
+                    XmlNode importedNode = doc.ImportNode(tempDoc.DocumentElement, true);
+                    prodEl.AppendChild(importedNode);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[MozaikDesJobExporter] Failed to parse CabProdParmsXml for '{cab.ProductName}': {ex.Message}. Using empty element.");
+                    XmlElement cabProdParms = doc.CreateElement("CabProdParms");
+                    prodEl.AppendChild(cabProdParms);
+                }
+            }
+            else
+            {
+                XmlElement cabProdParms = doc.CreateElement("CabProdParms");
+                prodEl.AppendChild(cabProdParms);
+            }
 
             XmlElement customParmEnabledORs = doc.CreateElement("CustomParmEnabledORs");
             prodEl.AppendChild(customParmEnabledORs);
@@ -710,5 +742,59 @@ public class MozaikDesJobExporter : MonoBehaviour
         productInterior.SetAttribute("DelL", "False");
         productInterior.SetAttribute("DelR", "False");
         prodEl.AppendChild(productInterior);
+    }
+
+    /// <summary>
+    /// Strips all auto-generated operations from panel parts, keeping only user operations.
+    /// 
+    /// SIMPLE RULE:
+    /// - KEEP: Operations with IsUserOp="True" (LED grooves, custom holes)
+    /// - REMOVE: Everything else (Mozaik regenerates line bores, fasteners, etc.)
+    /// 
+    /// This is for PANELS (Type=8) only - sections keep everything.
+    /// </summary>
+    /// <param name="cabProdPartsDoc">XmlDocument containing CabProdParts</param>
+    /// <param name="productName">Product name for debug logging</param>
+    /// <returns>Number of operations removed</returns>
+    private int StripNonUserOperations(XmlDocument cabProdPartsDoc, string productName)
+    {
+        int removedCount = 0;
+
+        // Find all CabProdPart elements
+        XmlNodeList partNodes = cabProdPartsDoc.SelectNodes("//CabProdPart");
+        if (partNodes == null) return 0;
+
+        foreach (XmlNode partNode in partNodes)
+        {
+            // Find PartOpsXml child element
+            XmlNode opsNode = partNode.SelectSingleNode("PartOpsXml");
+            if (opsNode == null) continue;
+
+            List<XmlNode> toRemove = new List<XmlNode>();
+            
+            foreach (XmlNode opNode in opsNode.ChildNodes)
+            {
+                // Skip non-element nodes
+                if (opNode.NodeType != XmlNodeType.Element) continue;
+                
+                // Check IsUserOp attribute - ONLY keep if explicitly "True"
+                XmlAttribute isUserOp = opNode.Attributes?["IsUserOp"];
+                bool isUser = isUserOp != null && isUserOp.Value == "True";
+                
+                if (!isUser)
+                {
+                    toRemove.Add(opNode);
+                }
+            }
+
+            // Remove non-user operations
+            foreach (XmlNode nodeToRemove in toRemove)
+            {
+                opsNode.RemoveChild(nodeToRemove);
+                removedCount++;
+            }
+        }
+
+        return removedCount;
     }
 }
