@@ -82,12 +82,127 @@ public class MozaikWall : MonoBehaviour
         visual.transform.localRotation = Quaternion.identity;
         visual.transform.localScale    = new Vector3(lenM, heightM, thickM);
 
-        if (wallMaterial != null)
+        // Apply wall material - use assigned material or create default
+        var r = visual.GetComponent<Renderer>();
+        if (r != null)
         {
-            var r = visual.GetComponent<Renderer>();
-            if (r != null)
-                r.sharedMaterial = wallMaterial;
+            Debug.Log($"[MozaikWall] SyncVisual for '{gameObject.name}' - wallMaterial={wallMaterial}");
+            
+            Material mat = wallMaterial;
+            
+            // If no material assigned, try to get default from TextureLibraryManager
+            if (mat == null)
+            {
+                if (TextureLibraryManager.Instance != null)
+                {
+                    mat = TextureLibraryManager.Instance.GetDefaultWallMaterial();
+                    if (mat != null)
+                    {
+                        Debug.Log($"[MozaikWall] Got material from TextureLibraryManager: {mat.name}");
+                    }
+                    else
+                    {
+                        Debug.Log("[MozaikWall] TextureLibraryManager returned null material");
+                    }
+                }
+                else
+                {
+                    Debug.Log("[MozaikWall] TextureLibraryManager.Instance is null");
+                }
+            }
+            else
+            {
+                Debug.Log($"[MozaikWall] Using assigned wallMaterial: {mat.name}");
+            }
+            
+            // Final fallback: create basic grey URP material (works in editor and runtime)
+            if (mat == null)
+            {
+                Debug.Log("[MozaikWall] No material found, calling CreateFallbackWallMaterial()");
+                mat = CreateFallbackWallMaterial();
+            }
+            
+            if (mat != null)
+            {
+                r.sharedMaterial = mat;
+                Debug.Log($"[MozaikWall] Applied material '{mat.name}' with shader '{mat.shader.name}'");
+            }
+            else
+            {
+                Debug.LogError("[MozaikWall] FAILED to get or create any material! Wall will be pink.");
+            }
         }
+    }
+
+    /// <summary>
+    /// Creates a fallback grey wall material using available shaders.
+    /// Works in both editor and play mode.
+    /// </summary>
+    private Material CreateFallbackWallMaterial()
+    {
+        Debug.Log("[MozaikWall] CreateFallbackWallMaterial() called");
+        
+        // Try multiple shader options with debug logging
+        Shader shader = null;
+        
+        // Try URP Lit
+        shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader != null)
+        {
+            Debug.Log("[MozaikWall] Found shader: URP/Lit");
+        }
+        
+        // Fallback to URP Simple Lit
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (shader != null) Debug.Log("[MozaikWall] Found shader: URP/Simple Lit");
+        }
+        
+        // Fallback to Sprites/Default (always available!)
+        if (shader == null)
+        {
+            shader = Shader.Find("Sprites/Default");
+            if (shader != null) Debug.Log("[MozaikWall] Found shader: Sprites/Default");
+        }
+        
+        // Fallback to Standard
+        if (shader == null)
+        {
+            shader = Shader.Find("Standard");
+            if (shader != null) Debug.Log("[MozaikWall] Found shader: Standard");
+        }
+        
+        // Fallback to Diffuse
+        if (shader == null)
+        {
+            shader = Shader.Find("Diffuse");
+            if (shader != null) Debug.Log("[MozaikWall] Found shader: Diffuse");
+        }
+        
+        if (shader != null)
+        {
+            Material mat = new Material(shader);
+            mat.name = "WallMaterial_Grey";
+            
+            // Set color based on shader type
+            if (mat.HasProperty("_Color"))
+            {
+                mat.SetColor("_Color", new Color(0.85f, 0.85f, 0.85f, 1f));
+                Debug.Log("[MozaikWall] Set _Color property");
+            }
+            if (mat.HasProperty("_BaseColor"))
+            {
+                mat.SetColor("_BaseColor", new Color(0.85f, 0.85f, 0.85f, 1f));
+                Debug.Log("[MozaikWall] Set _BaseColor property");
+            }
+            
+            Debug.Log($"[MozaikWall] Created wall material with shader: {shader.name}");
+            return mat;
+        }
+        
+        Debug.LogError("[MozaikWall] NO SHADER FOUND! Wall will be pink.");
+        return null;
     }
 
     /// <summary>

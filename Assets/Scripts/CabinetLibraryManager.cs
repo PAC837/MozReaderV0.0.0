@@ -136,6 +136,9 @@ public class CabinetLibraryManager : MonoBehaviour
         GameObject cabinet = Instantiate(entry.prefab, cabinetParent);
         cabinet.name = cabinetName; // Remove "(Clone)" suffix
 
+        // Apply materials to all child renderers (prefabs may have been saved without materials)
+        ApplyMaterialsToSpawnedCabinet(cabinet);
+
         // Get cabinet data to set position before snapping
         MozCabinetData cabinetData = cabinet.GetComponent<MozCabinetData>();
         if (cabinetData != null)
@@ -288,5 +291,110 @@ public class CabinetLibraryManager : MonoBehaviour
         Debug.Log($"[CabinetLibraryManager] Found {cabinetsOnThisWall.Count} cabinets on wall '{wall.name}'");
 
         return cabinetsOnThisWall;
+    }
+
+    /// <summary>
+    /// Applies materials to all renderers in a spawned cabinet.
+    /// Handles both panel parts (beige) and metal parts (chrome).
+    /// This fixes prefabs that were saved without materials.
+    /// </summary>
+    private void ApplyMaterialsToSpawnedCabinet(GameObject cabinet)
+    {
+        Renderer[] renderers = cabinet.GetComponentsInChildren<Renderer>(true);
+        int materialsApplied = 0;
+
+        foreach (Renderer rend in renderers)
+        {
+            // Skip Bounds objects - they use special material
+            if (rend.gameObject.name == "Bounds") continue;
+            // Skip LineRenderers (wireframe)
+            if (rend is LineRenderer) continue;
+
+            // Check if this is a metal part
+            string partName = rend.gameObject.name;
+            bool isMetal = IsMetalPart(partName);
+
+            Material mat = GetMaterialForPart(partName, isMetal);
+            if (mat != null)
+            {
+                rend.sharedMaterial = mat;
+                materialsApplied++;
+            }
+        }
+
+        Debug.Log($"[CabinetLibraryManager] Applied materials to {materialsApplied} parts in '{cabinet.name}'");
+    }
+
+    /// <summary>
+    /// Checks if part name indicates a metal part (rods, hangers, hardware).
+    /// </summary>
+    private bool IsMetalPart(string partName)
+    {
+        if (string.IsNullOrEmpty(partName)) return false;
+        string lower = partName.ToLowerInvariant();
+        return lower.Contains("rod") ||
+               lower.Contains("hanger") ||
+               lower.Contains("hardware") ||
+               lower.Contains("metal") ||
+               lower.Contains("chrome");
+    }
+
+    /// <summary>
+    /// Gets the appropriate material for a part based on type.
+    /// </summary>
+    private Material GetMaterialForPart(string partName, bool isMetal)
+    {
+        // Try to get from TextureLibraryManager
+        if (TextureLibraryManager.Instance != null)
+        {
+            if (isMetal)
+            {
+                Material chrome = TextureLibraryManager.Instance.GetDefaultChromeMaterial();
+                if (chrome != null) return chrome;
+            }
+            else
+            {
+                Material cabinet = TextureLibraryManager.Instance.GetDefaultCabinetMaterial();
+                if (cabinet != null) return cabinet;
+            }
+        }
+
+        // Fallback: create URP material
+        return CreateFallbackMaterial(isMetal);
+    }
+
+    /// <summary>
+    /// Creates a fallback material when TextureLibraryManager is not available.
+    /// </summary>
+    private Material CreateFallbackMaterial(bool isMetal)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+        if (shader == null) shader = Shader.Find("Standard");
+
+        if (shader == null)
+        {
+            Debug.LogWarning("[CabinetLibraryManager] No shader found for fallback material!");
+            return null;
+        }
+
+        Material mat = new Material(shader);
+
+        if (isMetal)
+        {
+            // Chrome/metallic look
+            mat.color = new Color(0.8f, 0.8f, 0.85f, 1f);
+            mat.SetFloat("_Smoothness", 0.9f);
+            mat.SetFloat("_Metallic", 0.9f);
+            mat.name = "FallbackChromeMaterial";
+        }
+        else
+        {
+            // Light beige panel
+            mat.color = new Color(0.9f, 0.9f, 0.85f, 1f);
+            mat.name = "FallbackPanelMaterial";
+        }
+
+        return mat;
     }
 }

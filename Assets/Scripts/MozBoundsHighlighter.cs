@@ -60,8 +60,50 @@ public class MozBoundsHighlighter : MonoBehaviour
 
     private void OnEnable()
     {
+        // Clean up any old wireframes baked into prefabs from before the fix
+        CleanupOldWireframes();
+        
         FindBoundsRendererIfNeeded();
         UpdateVisibility();
+    }
+
+    /// <summary>
+    /// Removes any old wireframe children that were accidentally baked into prefabs.
+    /// This handles the case where prefabs were saved with wireframes created by old code.
+    /// </summary>
+    private void CleanupOldWireframes()
+    {
+        // Find and destroy any existing SelectionWireframe children
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        int destroyed = 0;
+        
+        foreach (Transform child in children)
+        {
+            if (child == transform) continue; // Skip self
+            
+            // Check for old wireframe objects by name
+            if (child.name == "SelectionWireframe" || 
+                child.name.StartsWith("Edge") ||
+                child.name == "Wireframe")
+            {
+                Debug.Log($"[MozBoundsHighlighter] Cleaning up old wireframe child: '{child.name}' on '{gameObject.name}'");
+                
+                if (Application.isPlaying)
+                {
+                    Destroy(child.gameObject);
+                }
+                else
+                {
+                    DestroyImmediate(child.gameObject);
+                }
+                destroyed++;
+            }
+        }
+        
+        if (destroyed > 0)
+        {
+            Debug.Log($"[MozBoundsHighlighter] Cleaned up {destroyed} old wireframe objects from '{gameObject.name}'");
+        }
     }
 
     private void Update()
@@ -351,6 +393,7 @@ public class MozBoundsHighlighter : MonoBehaviour
 
     /// <summary>
     /// Creates 12 LineRenderers to draw a wireframe box around the cabinet bounds.
+    /// Uses LOCAL space so wireframe moves with the cabinet.
     /// </summary>
     private void CreateWireframeIfNeeded()
     {
@@ -361,29 +404,32 @@ public class MozBoundsHighlighter : MonoBehaviour
 
         // Inflate bounds
         Vector3 size = bounds.size * boundsInflation;
-        Vector3 center = bounds.center;
+        
+        // Convert world center to LOCAL space (relative to this transform)
+        Vector3 localCenter = transform.InverseTransformPoint(bounds.center);
 
-        // Calculate 8 corners in world space
+        // Calculate 8 corners in LOCAL space
         Vector3 halfSize = size * 0.5f;
         Vector3[] corners = new Vector3[8];
         
-        // Bottom 4 corners
-        corners[0] = center + new Vector3(-halfSize.x, -halfSize.y, -halfSize.z);
-        corners[1] = center + new Vector3(+halfSize.x, -halfSize.y, -halfSize.z);
-        corners[2] = center + new Vector3(+halfSize.x, -halfSize.y, +halfSize.z);
-        corners[3] = center + new Vector3(-halfSize.x, -halfSize.y, +halfSize.z);
+        // Bottom 4 corners (local space)
+        corners[0] = localCenter + new Vector3(-halfSize.x, -halfSize.y, -halfSize.z);
+        corners[1] = localCenter + new Vector3(+halfSize.x, -halfSize.y, -halfSize.z);
+        corners[2] = localCenter + new Vector3(+halfSize.x, -halfSize.y, +halfSize.z);
+        corners[3] = localCenter + new Vector3(-halfSize.x, -halfSize.y, +halfSize.z);
         
-        // Top 4 corners
-        corners[4] = center + new Vector3(-halfSize.x, +halfSize.y, -halfSize.z);
-        corners[5] = center + new Vector3(+halfSize.x, +halfSize.y, -halfSize.z);
-        corners[6] = center + new Vector3(+halfSize.x, +halfSize.y, +halfSize.z);
-        corners[7] = center + new Vector3(-halfSize.x, +halfSize.y, +halfSize.z);
+        // Top 4 corners (local space)
+        corners[4] = localCenter + new Vector3(-halfSize.x, +halfSize.y, -halfSize.z);
+        corners[5] = localCenter + new Vector3(+halfSize.x, +halfSize.y, -halfSize.z);
+        corners[6] = localCenter + new Vector3(+halfSize.x, +halfSize.y, +halfSize.z);
+        corners[7] = localCenter + new Vector3(-halfSize.x, +halfSize.y, +halfSize.z);
 
-        // Create container GameObject
+        // Create container GameObject (parented to cabinet so it moves with it)
         _wireframeContainer = new GameObject("SelectionWireframe");
         _wireframeContainer.transform.SetParent(transform);
         _wireframeContainer.transform.localPosition = Vector3.zero;
         _wireframeContainer.transform.localRotation = Quaternion.identity;
+        _wireframeContainer.transform.localScale = Vector3.one;
 
         // Create 12 line renderers (12 edges of cube)
         _wireframeLines = new LineRenderer[12];
@@ -405,29 +451,35 @@ public class MozBoundsHighlighter : MonoBehaviour
             GameObject lineGO = new GameObject($"Edge{i}");
             lineGO.transform.SetParent(_wireframeContainer.transform);
             lineGO.transform.localPosition = Vector3.zero;
+            lineGO.transform.localRotation = Quaternion.identity;
+            lineGO.transform.localScale = Vector3.one;
 
             LineRenderer lr = lineGO.AddComponent<LineRenderer>();
             lr.positionCount = 2;
             lr.startWidth = lineWidth;
             lr.endWidth = lineWidth;
             
-            // Use Unlit/Color shader for bright, always-visible lines
-            Material lineMat = new Material(Shader.Find("Unlit/Color"));
-            lineMat.color = wireframeColor;
-            lr.material = lineMat;
+            // Use URP-compatible unlit shader for bright, always-visible lines
+            Material lineMat = CreateWireframeMaterial();
+            if (lineMat != null)
+            {
+                lr.material = lineMat;
+            }
             
             lr.startColor = wireframeColor;
             lr.endColor = wireframeColor;
-            lr.useWorldSpace = true;
+            
+            // CRITICAL: Use LOCAL space so wireframe moves with parent!
+            lr.useWorldSpace = false;
 
-            // Set line positions
+            // Set line positions in LOCAL space
             lr.SetPosition(0, corners[edges[i, 0]]);
             lr.SetPosition(1, corners[edges[i, 1]]);
 
             _wireframeLines[i] = lr;
         }
 
-        Debug.Log($"[MozBoundsHighlighter] Created wireframe with 12 lines for '{gameObject.name}'");
+        Debug.Log($"[MozBoundsHighlighter] Created wireframe (local space) for '{gameObject.name}'");
     }
 
     /// <summary>
@@ -449,6 +501,67 @@ public class MozBoundsHighlighter : MonoBehaviour
         }
 
         _wireframeLines = null;
+    }
+
+    /// <summary>
+    /// Creates a URP-compatible material for wireframe lines.
+    /// </summary>
+    private Material CreateWireframeMaterial()
+    {
+        Debug.Log("[MozBoundsHighlighter] CreateWireframeMaterial() called");
+        
+        // Try Sprites-Default first (always available, good for LineRenderer)
+        Shader shader = Shader.Find("Sprites/Default");
+        if (shader != null)
+        {
+            Debug.Log("[MozBoundsHighlighter] Using Sprites/Default shader");
+        }
+        
+        // Fallback to URP Unlit
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader != null) Debug.Log("[MozBoundsHighlighter] Using URP/Unlit shader");
+        }
+        
+        // Fallback to legacy Unlit/Color
+        if (shader == null)
+        {
+            shader = Shader.Find("Unlit/Color");
+            if (shader != null) Debug.Log("[MozBoundsHighlighter] Using Unlit/Color shader");
+        }
+        
+        // Final fallback to Standard
+        if (shader == null)
+        {
+            shader = Shader.Find("Standard");
+            if (shader != null) Debug.Log("[MozBoundsHighlighter] Using Standard shader");
+        }
+
+        if (shader == null)
+        {
+            Debug.LogError("[MozBoundsHighlighter] NO SHADER FOUND! Wireframe will be pink.");
+            return null;
+        }
+
+        Material mat = new Material(shader);
+        mat.name = "WireframeMaterial";
+        
+        // Set color based on shader type
+        if (mat.HasProperty("_Color"))
+        {
+            mat.SetColor("_Color", wireframeColor);
+            Debug.Log($"[MozBoundsHighlighter] Set _Color to {wireframeColor}");
+        }
+        if (mat.HasProperty("_BaseColor"))
+        {
+            mat.SetColor("_BaseColor", wireframeColor);
+            Debug.Log($"[MozBoundsHighlighter] Set _BaseColor to {wireframeColor}");
+        }
+        
+        Debug.Log($"[MozBoundsHighlighter] Material created with shader: {shader.name}");
+
+        return mat;
     }
 
     private Transform FindChildByName(Transform root, string name)

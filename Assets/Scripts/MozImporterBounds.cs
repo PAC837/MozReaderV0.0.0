@@ -16,11 +16,18 @@ public class MozImporterBounds : MonoBehaviour
     public TextAsset mozFile;
 
     [Header("Visuals")]
-    [Tooltip("Material for the part cubes (optional).")]
+    [Tooltip("Material for the part cubes (optional - will create URP Lit if not set).")]
     public Material panelMaterial;
 
     [Tooltip("Material for the bounding box cube (optional, e.g. transparent outline).")]
     public Material boundsMaterial;
+
+    [Tooltip("Default color for auto-created URP Lit material.")]
+    public Color defaultPanelColor = new Color(0.9f, 0.9f, 0.85f, 1f); // Light beige
+
+    [Header("Part Visibility")]
+    [Tooltip("Part names to hide in Unity (data still kept for export). Case-insensitive contains match.")]
+    public string[] hiddenPartNames = new string[] { "Linear Light", "LED" };
 
     [Header("Auto-Snap Settings")]
     [Tooltip("Automatically snap imported cabinets to the currently selected wall.")]
@@ -69,17 +76,22 @@ public class MozImporterBounds : MonoBehaviour
         {
             GameObject partGO = SpawnPart(root.transform, part);
 
-            Renderer r = partGO.GetComponent<Renderer>();
-            if (r != null)
+            // ONLY include visible parts in bounds calculation
+            // Hidden parts (LED, Linear Light) should NOT affect bounding box
+            if (!ShouldHidePart(part.Name))
             {
-                if (!hasBounds)
+                Renderer r = partGO.GetComponent<Renderer>();
+                if (r != null)
                 {
-                    totalBounds = r.bounds;
-                    hasBounds = true;
-                }
-                else
-                {
-                    totalBounds.Encapsulate(r.bounds);
+                    if (!hasBounds)
+                    {
+                        totalBounds = r.bounds;
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        totalBounds.Encapsulate(r.bounds);
+                    }
                 }
             }
         }
@@ -153,19 +165,47 @@ public class MozImporterBounds : MonoBehaviour
 
     private GameObject SpawnPart(Transform root, MozPart part)
     {
-        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = string.IsNullOrEmpty(part.Name) ? "Part" : part.Name;
+        string partName = string.IsNullOrEmpty(part.Name) ? "Part" : part.Name;
+        bool isRodOrCylinder = IsRodPart(partName);
+        bool isMetalPart = IsMetalPart(partName);
+        
+        // Spawn cylinder for rods, cube for panels
+        GameObject go;
+        if (isRodOrCylinder)
+        {
+            go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Debug.Log($"[MozImporterBounds] Spawning CYLINDER for rod part: {partName}");
+        }
+        else
+        {
+            go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        }
+        
+        go.name = partName;
         go.transform.SetParent(root, false);
 
         float sx = part.PartL * MM_TO_M;       // length along X
         float sy = part.Thickness * MM_TO_M;   // thickness along Y
         float sz = part.PartW * MM_TO_M;       // depth along Z
 
-        go.transform.localScale = new Vector3(
-            Mathf.Abs(sx),
-            Mathf.Abs(sy),
-            Mathf.Abs(sz)
-        );
+        if (isRodOrCylinder)
+        {
+            // For cylinders: Unity cylinder is 2 units tall, 1 unit diameter
+            // We want length along X axis, diameter based on thickness/width
+            float diameter = Mathf.Max(Mathf.Abs(sy), Mathf.Abs(sz)) * 0.5f; // Half because cylinder is 1 unit diameter = 0.5 radius
+            float length = Mathf.Abs(sx) * 0.5f; // Half because cylinder is 2 units tall
+            go.transform.localScale = new Vector3(diameter, length, diameter);
+            // Rotate to make length along X instead of Y
+            go.transform.localRotation = Quaternion.Euler(0, 0, 90);
+        }
+        else
+        {
+            go.transform.localScale = new Vector3(
+                Mathf.Abs(sx),
+                Mathf.Abs(sy),
+                Mathf.Abs(sz)
+            );
+        }
 
         Vector3 mozPos = MozCoordinateMapper.PositionMmToUnity(part.X, part.Y, part.Z);
         Quaternion mozRot = MozCoordinateMapper.RotationFromMoz(
@@ -180,17 +220,157 @@ public class MozImporterBounds : MonoBehaviour
             -(sz * 0.5f)
         );
 
-        go.transform.localRotation = mozRot;
+        if (!isRodOrCylinder)
+        {
+            go.transform.localRotation = mozRot;
+        }
+        else
+        {
+            // For rods, apply Mozaik rotation then our cylinder fix rotation
+            go.transform.localRotation = mozRot * Quaternion.Euler(0, 0, 90);
+        }
         go.transform.localPosition = mozPos + mozRot * half;
 
-        if (panelMaterial != null)
+        // Apply material based on part type
+        Renderer r = go.GetComponent<Renderer>();
+        if (r != null)
         {
-            Renderer r = go.GetComponent<Renderer>();
-            if (r != null)
-                r.sharedMaterial = panelMaterial;
+            Material mat = GetMaterialForPart(partName, isMetalPart);
+            if (mat != null)
+            {
+                r.sharedMaterial = mat;
+            }
+            else
+            {
+                Debug.LogWarning($"[MozImporterBounds] Could not get material for '{partName}' - will be pink!");
+            }
+        }
+
+        // Hide part if it matches any hidden name (data still kept for export)
+        if (ShouldHidePart(part.Name))
+        {
+            go.SetActive(false);
+            Debug.Log($"[MozImporterBounds] Hidden part '{part.Name}' (data preserved for export)");
         }
 
         return go;
+    }
+
+    /// <summary>
+    /// Checks if part name indicates a rod/cylindrical part.
+    /// </summary>
+    private bool IsRodPart(string partName)
+    {
+        if (string.IsNullOrEmpty(partName)) return false;
+        string lower = partName.ToLowerInvariant();
+        return lower.Contains("rod") || lower.Contains("closetrod");
+    }
+
+    /// <summary>
+    /// Checks if part name indicates a metal part (rods, hangers, hardware).
+    /// </summary>
+    private bool IsMetalPart(string partName)
+    {
+        if (string.IsNullOrEmpty(partName)) return false;
+        string lower = partName.ToLowerInvariant();
+        return lower.Contains("rod") || 
+               lower.Contains("hanger") || 
+               lower.Contains("hardware") ||
+               lower.Contains("metal") ||
+               lower.Contains("chrome");
+    }
+
+    /// <summary>
+    /// Gets the appropriate material for a part based on type.
+    /// </summary>
+    private Material GetMaterialForPart(string partName, bool isMetal)
+    {
+        // If we have a panel material assigned, use it for non-metal parts
+        if (!isMetal && panelMaterial != null)
+        {
+            return panelMaterial;
+        }
+
+        // Try to get from TextureLibraryManager
+        if (TextureLibraryManager.Instance != null)
+        {
+            if (isMetal)
+            {
+                Material chrome = TextureLibraryManager.Instance.GetDefaultChromeMaterial();
+                if (chrome != null)
+                {
+                    Debug.Log($"[MozImporterBounds] Using chrome material for metal part: {partName}");
+                    return chrome;
+                }
+            }
+            else
+            {
+                Material cabinet = TextureLibraryManager.Instance.GetDefaultCabinetMaterial();
+                if (cabinet != null)
+                {
+                    Debug.Log($"[MozImporterBounds] Using default cabinet material for: {partName}");
+                    return cabinet;
+                }
+            }
+        }
+
+        // Fallback: create our own URP material
+        return CreateDefaultUrpMaterial();
+    }
+
+    /// <summary>
+    /// Creates a default URP Lit material with the configured color.
+    /// Falls back to Simple Lit, then Unlit if URP Lit not found.
+    /// </summary>
+    private Material CreateDefaultUrpMaterial()
+    {
+        // Try URP Lit shader first
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        
+        // Fall back to Simple Lit
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+        }
+        
+        // Fall back to Unlit
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        }
+
+        if (shader == null)
+        {
+            Debug.LogWarning("[MozImporterBounds] No URP shader found - parts will use default pink material.");
+            return null;
+        }
+
+        Material mat = new Material(shader);
+        mat.color = defaultPanelColor;
+        mat.name = "AutoCreatedPanelMaterial";
+        
+        return mat;
+    }
+
+    /// <summary>
+    /// Checks if a part should be hidden in Unity display.
+    /// </summary>
+    private bool ShouldHidePart(string partName)
+    {
+        if (string.IsNullOrEmpty(partName) || hiddenPartNames == null)
+            return false;
+
+        string nameLower = partName.ToLowerInvariant().Trim();
+        
+        foreach (string hidden in hiddenPartNames)
+        {
+            if (!string.IsNullOrEmpty(hidden) && nameLower.Contains(hidden.ToLowerInvariant().Trim()))
+            {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     private GameObject CreateBoundsObject(Transform root, Bounds totalBounds)

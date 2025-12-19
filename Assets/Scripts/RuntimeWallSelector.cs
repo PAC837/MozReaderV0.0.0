@@ -248,13 +248,34 @@ public class RuntimeWallSelector : MonoBehaviour
                 _originalWallMaterial = renderer.sharedMaterial;
             }
             
-            // Create a new material instance with the tint
-            Material highlightMat = new Material(Shader.Find("Standard"));
-            highlightMat.color = selectedWallTint;
+            // Create a new material instance with the tint using URP-compatible shader
+            Shader shader = Shader.Find("Sprites/Default"); // Always available, works for highlights
+            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            
+            if (shader == null)
+            {
+                Debug.LogError("[RuntimeWallSelector] No shader found for highlight material!");
+                return;
+            }
+            
+            Material highlightMat = new Material(shader);
+            highlightMat.name = "WallHighlight";
+            
+            // Set color based on shader type
+            if (highlightMat.HasProperty("_Color"))
+            {
+                highlightMat.SetColor("_Color", selectedWallTint);
+            }
+            if (highlightMat.HasProperty("_BaseColor"))
+            {
+                highlightMat.SetColor("_BaseColor", selectedWallTint);
+            }
+            
             renderer.material = highlightMat;
             
             if (showDebugLogs)
-                Debug.Log($"[RuntimeWallSelector] Applied highlight to {wall.name}");
+                Debug.Log($"[RuntimeWallSelector] Applied highlight to {wall.name} using shader: {shader.name}");
         }
         else
         {

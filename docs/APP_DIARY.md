@@ -4,6 +4,106 @@ Running development log for MozReaderV0.0.0.
 
 ---
 
+## [2025-12-19] Fix Pink Shader Issues: Walls, Highlights, and Wireframes
+
+### Summary
+- Fixed all pink shader issues that occurred at runtime (URP shader lookup failures)
+- Wall highlight now uses `Sprites/Default` shader (always available)
+- Wall base material uses `TextureLibraryManager.GetDefaultWallMaterial()` with URP/Lit
+- Cabinet wireframe selection uses `Sprites/Default` shader
+- Added automatic cleanup of old wireframe children baked into prefabs
+
+### Files
+- `Assets/Scripts/RuntimeWallSelector.cs` – Fixed `SetWallHighlight()` to use URP-compatible shader cascade
+- `Assets/Scripts/MozaikWall.cs` – Added comprehensive debug logging for material application
+- `Assets/Scripts/MozBoundsHighlighter.cs` – Fixed wireframe shader, added `CleanupOldWireframes()` in OnEnable
+
+### Behavior / Notes
+
+**Wall Highlight Fix:**
+- **Problem**: `SetWallHighlight()` used `Shader.Find("Standard")` which returns null in URP at runtime
+- **Solution**: Cascade of shaders: `Sprites/Default` → `URP/Lit` → `Standard`
+- **Result**: Selected walls now show blue highlight tint (not pink)
+
+**Wall Base Material:**
+- Uses `TextureLibraryManager.GetDefaultWallMaterial()` which creates URP/Lit material
+- Fallback creates inline material with `Sprites/Default` if URP shaders not found
+- Debug logging traces entire material lookup chain
+
+**Wireframe Shader Fix:**
+- **Problem**: `CreateWireframeMaterial()` tried URP shaders that might not be available at runtime
+- **Solution**: Try `Sprites/Default` first (always available for LineRenderer)
+- **Result**: Selection wireframe is green (not pink)
+
+**Old Wireframe Cleanup:**
+- **Problem**: Prefabs saved with old wireframe children caused pink ghosts
+- **Solution**: `CleanupOldWireframes()` runs on OnEnable, deletes any children named:
+  - "SelectionWireframe"
+  - "Edge*" (Edge0, Edge1, etc.)
+  - "Wireframe"
+- **Result**: No more duplicate wireframe artifacts
+
+### Shader Lookup Pattern (Use This!)
+```csharp
+// Always works for runtime material creation:
+Shader shader = Shader.Find("Sprites/Default"); // First choice - always available
+if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
+if (shader == null) shader = Shader.Find("Standard");
+```
+
+---
+
+## [2025-12-18] Visual Cleanup: Default Materials, Cylinder Rods, Auto-Floor, No More Pink!
+
+### Summary
+- Added default material system to TextureLibraryManager (cabinet, wall, chrome, floor)
+- Fixed pink material issue - walls and cabinets now have proper fallback materials
+- Closet rods now spawn as **cylinders** instead of cubes
+- Metal parts (rods, hangers) use chrome metallic material
+- **FloorManager** auto-creates floor on scene start
+- Simplified VISUAL_SETUP.md - removed redundant manual steps
+
+### Files
+- `Assets/Scripts/TextureLibraryManager.cs` – Added GetDefaultCabinetMaterial(), GetDefaultWallMaterial(), GetDefaultChromeMaterial(), GetDefaultFloorMaterial() + CreateUrpMaterial() helper
+- `Assets/Scripts/MozImporterBounds.cs` – Added IsRodPart(), IsMetalPart(), GetMaterialForPart(); rods spawn as Cylinder; metal parts get chrome material
+- `Assets/Scripts/MozaikWall.cs` – Added fallback to TextureLibraryManager.GetDefaultWallMaterial() with cascading fallback to inline grey URP material
+- `docs/VISUAL_SETUP.md` – **NEW** Complete setup guide with step-by-step checklist
+
+### Behavior / Notes
+
+**Default Materials:**
+| Part Type | Material | Properties |
+|-----------|----------|------------|
+| Cabinet panels | First texture in library OR beige (0.9, 0.87, 0.8) | URP Lit, smoothness 0.3 |
+| Walls | Light grey (0.85, 0.85, 0.85) | URP Lit, smoothness 0.2 |
+| Closet rods/Hangers | Chrome (0.8, 0.8, 0.82) | URP Lit, metallic 0.9, smoothness 0.9 |
+| Floor | Tan (0.7, 0.7, 0.65) | URP Lit, smoothness 0.4 |
+
+**Cylinder Rods:**
+- Parts containing "rod" or "closetrod" spawn as `PrimitiveType.Cylinder`
+- Cylinder scaled and rotated to match Mozaik dimensions (length along rod axis)
+- Other parts continue to spawn as cubes
+
+**Metal Detection:**
+- Part names containing: `rod`, `hanger`, `hardware`, `metal`, `chrome`
+- These parts get chrome material instead of cabinet material
+
+**Material Cascade:**
+1. Check if explicit `panelMaterial` assigned on importer
+2. Try `TextureLibraryManager.Instance.GetDefaultXMaterial()`
+3. Create inline URP Lit material with fallback color
+4. If all fail → pink (but now has multiple fallbacks)
+
+### Setup Guide
+See `docs/VISUAL_SETUP.md` for complete setup instructions including:
+- Scene manager setup (TextureLibraryManager, etc.)
+- Floor creation
+- Wall setup
+- Importer configuration
+- Troubleshooting pink materials
+
+---
+
 ## [2025-12-16] 🎉 MAJOR BREAKTHROUGH: Parametric Panel Operations Working!
 
 ### Summary

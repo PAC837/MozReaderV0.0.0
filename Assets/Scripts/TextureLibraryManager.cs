@@ -17,6 +17,25 @@ public class TextureLibraryManager : MonoBehaviour
     [Tooltip("List of loaded textures. Auto-populated on Start.")]
     public List<TextureEntry> loadedTextures = new List<TextureEntry>();
 
+    [Header("Default Materials")]
+    [Tooltip("Default color for walls (grey)")]
+    public Color defaultWallColor = new Color(0.85f, 0.85f, 0.85f, 1f);
+
+    [Tooltip("Default color for chrome/metal parts (rods, hangers)")]
+    public Color defaultChromeColor = new Color(0.8f, 0.8f, 0.82f, 1f);
+
+    [Tooltip("Default smoothness for chrome/metal (0-1)")]
+    [Range(0f, 1f)]
+    public float chromeSmoothness = 0.9f;
+
+    [Tooltip("Default color for floor")]
+    public Color defaultFloorColor = new Color(0.7f, 0.7f, 0.65f, 1f);
+
+    // Cached default materials
+    private Material _defaultWallMaterial;
+    private Material _defaultChromeMaterial;
+    private Material _defaultFloorMaterial;
+
     // Singleton
     private static TextureLibraryManager _instance;
     public static TextureLibraryManager Instance => _instance;
@@ -155,5 +174,98 @@ public class TextureLibraryManager : MonoBehaviour
     {
         TextureEntry entry = GetTextureByName(displayName);
         return entry?.material;
+    }
+
+    /// <summary>
+    /// Gets the default cabinet material (first texture in library, or beige URP material).
+    /// </summary>
+    public Material GetDefaultCabinetMaterial()
+    {
+        // If textures loaded, use first one
+        if (loadedTextures.Count > 0 && loadedTextures[0].material != null)
+        {
+            Debug.Log($"[TextureLibraryManager] Using first texture as cabinet default: {loadedTextures[0].displayName}");
+            return loadedTextures[0].material;
+        }
+
+        // Fallback: create beige URP material
+        return CreateUrpMaterial(new Color(0.9f, 0.87f, 0.8f, 1f), 0.3f, "DefaultCabinetMaterial");
+    }
+
+    /// <summary>
+    /// Gets the default wall material (grey matte).
+    /// </summary>
+    public Material GetDefaultWallMaterial()
+    {
+        if (_defaultWallMaterial == null)
+        {
+            _defaultWallMaterial = CreateUrpMaterial(defaultWallColor, 0.2f, "DefaultWallMaterial");
+        }
+        return _defaultWallMaterial;
+    }
+
+    /// <summary>
+    /// Gets the default chrome/metal material for rods and hangers.
+    /// </summary>
+    public Material GetDefaultChromeMaterial()
+    {
+        if (_defaultChromeMaterial == null)
+        {
+            _defaultChromeMaterial = CreateUrpMaterial(defaultChromeColor, chromeSmoothness, "DefaultChromeMaterial");
+            
+            // Make it metallic
+            if (_defaultChromeMaterial.HasProperty("_Metallic"))
+            {
+                _defaultChromeMaterial.SetFloat("_Metallic", 0.9f);
+            }
+        }
+        return _defaultChromeMaterial;
+    }
+
+    /// <summary>
+    /// Gets the default floor material.
+    /// </summary>
+    public Material GetDefaultFloorMaterial()
+    {
+        if (_defaultFloorMaterial == null)
+        {
+            _defaultFloorMaterial = CreateUrpMaterial(defaultFloorColor, 0.4f, "DefaultFloorMaterial");
+        }
+        return _defaultFloorMaterial;
+    }
+
+    /// <summary>
+    /// Creates a URP Lit material with specified color and smoothness.
+    /// </summary>
+    private Material CreateUrpMaterial(Color color, float smoothness, string name)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+        }
+        if (shader == null)
+        {
+            shader = Shader.Find("Unlit/Color");
+        }
+        
+        if (shader == null)
+        {
+            Debug.LogError($"[TextureLibraryManager] No URP shader found for {name}! Materials will be pink.");
+            return null;
+        }
+
+        Material mat = new Material(shader);
+        mat.name = name;
+        mat.color = color;
+        
+        if (mat.HasProperty("_Smoothness"))
+        {
+            mat.SetFloat("_Smoothness", smoothness);
+        }
+
+        Debug.Log($"[TextureLibraryManager] Created {name} with shader '{shader.name}'");
+        return mat;
     }
 }
