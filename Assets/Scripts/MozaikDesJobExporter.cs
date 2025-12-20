@@ -198,6 +198,9 @@ public class MozaikDesJobExporter : MonoBehaviour
             totalIdCount = ExportWallsToXml(doc, room, totalIdCount);
         }
 
+        // 3b. Export Opening/Fixtures (from FourWallRoomBuilder)
+        totalIdCount = ExportFixturesToXml(doc, room, totalIdCount);
+
         // 4. Export Products
         if (exportProducts)
         {
@@ -240,6 +243,24 @@ public class MozaikDesJobExporter : MonoBehaviour
 
     /// <summary>
     /// Export all MozaikWall components to the XML document.
+    /// 
+    /// MOZAIK COORDINATE SYSTEM:
+    /// - +X = right
+    /// - +Y = toward BACK of room (larger Y = further back)
+    /// 
+    /// UNITY COORDINATE SYSTEM:
+    /// - +X = right  
+    /// - +Z = toward FRONT of room (larger Z = further front)
+    /// 
+    /// So: Unity Z → Mozaik -Y (negated!)
+    /// 
+    /// MOZAIK WALL FORMAT:
+    /// - Wall 1: FRONT wall (Ang=180°), starts at front-right corner
+    /// - Wall 2: LEFT wall (Ang=90°), starts at front-left corner  
+    /// - Wall 3: BACK wall (Ang=0°), starts at back-left corner
+    /// - Wall 4: RIGHT wall (Ang=270°), starts at back-right corner
+    /// 
+    /// Walls chain: Wall1.END = Wall2.START, etc.
     /// </summary>
     private int ExportWallsToXml(XmlDocument doc, XmlElement room, int startId)
     {
@@ -248,7 +269,6 @@ public class MozaikDesJobExporter : MonoBehaviour
         if (wallsNode == null)
         {
             wallsNode = doc.CreateElement("Walls");
-            // Insert after RoomSet
             XmlNode roomSet = room["RoomSet"];
             if (roomSet != null)
                 room.InsertAfter(wallsNode, roomSet);
@@ -257,63 +277,139 @@ public class MozaikDesJobExporter : MonoBehaviour
         }
         else
         {
-            wallsNode.RemoveAll(); // wipe old walls
+            wallsNode.RemoveAll();
         }
 
-        // Collect all MozaikWall components in the scene
-        MozaikWall[] unityWalls;
+        // Find FourWallRoomBuilder for authoritative room dimensions
+        FourWallRoomBuilder roomBuilder = null;
+#if UNITY_2023_1_OR_NEWER
+        roomBuilder = Object.FindFirstObjectByType<FourWallRoomBuilder>();
+#else
+        roomBuilder = Object.FindObjectOfType<FourWallRoomBuilder>();
+#endif
 
+        if (roomBuilder == null)
+        {
+            Debug.LogError("[MozaikDesJobExporter] No FourWallRoomBuilder found! Cannot export walls.");
+            return startId;
+        }
+
+        // Get room dimensions in mm from FourWallRoomBuilder
+        float roomWidthMm = roomBuilder.roomWidthMm;   // Left-right (along X)
+        float roomDepthMm = roomBuilder.roomDepthMm;   // Front-back (along Z)
+        float ceilingHeightMm = roomBuilder.ceilingHeightMm;
+        float wallThicknessMm = roomBuilder.wallThicknessMm;
+
+        Debug.Log($"[MozaikDesJobExporter] === WALL EXPORT DEBUG ===");
+        Debug.Log($"[MozaikDesJobExporter] Room from FourWallRoomBuilder:");
+        Debug.Log($"[MozaikDesJobExporter]   Width={roomWidthMm}mm, Depth={roomDepthMm}mm");
+        Debug.Log($"[MozaikDesJobExporter]   Height={ceilingHeightMm}mm, WallThick={wallThicknessMm}mm");
+
+        // Calculate half dimensions for corner positions
+        float halfWidthMm = roomWidthMm / 2f;
+        float halfDepthMm = roomDepthMm / 2f;
+
+        // Room interior corners (where walls meet)
+        // Unity: +X=right, +Z=front
+        // Mozaik: +X=right, +Y=back
+        // So Unity Z maps to Mozaik -Y (negate!)
+        
+        // Unity corners (in mm, centered at origin):
+        // Front-Right: (+halfWidth, +halfDepth) in Unity XZ
+        // Front-Left:  (-halfWidth, +halfDepth)
+        // Back-Left:   (-halfWidth, -halfDepth)
+        // Back-Right:  (+halfWidth, -halfDepth)
+        
+        // Convert to Mozaik (X stays same, Z becomes -Y):
+        // Unity (+X, +Z) → Mozaik (+X, -Z) → so Unity front (+Z) → Mozaik front (-Y / smaller Y)
+        float frontRightX = halfWidthMm;
+        float frontRightY = -halfDepthMm;  // Unity +Z (front) → Mozaik -Y (front = smaller Y)
+        
+        float frontLeftX = -halfWidthMm;
+        float frontLeftY = -halfDepthMm;
+        
+        float backLeftX = -halfWidthMm;
+        float backLeftY = halfDepthMm;     // Unity -Z (back) → Mozaik +Y (back = larger Y)
+        
+        float backRightX = halfWidthMm;
+        float backRightY = halfDepthMm;
+
+        Debug.Log($"[MozaikDesJobExporter] Calculated Mozaik corners:");
+        Debug.Log($"[MozaikDesJobExporter]   Front-Right: ({frontRightX:F1}, {frontRightY:F1})");
+        Debug.Log($"[MozaikDesJobExporter]   Front-Left:  ({frontLeftX:F1}, {frontLeftY:F1})");
+        Debug.Log($"[MozaikDesJobExporter]   Back-Left:   ({backLeftX:F1}, {backLeftY:F1})");
+        Debug.Log($"[MozaikDesJobExporter]   Back-Right:  ({backRightX:F1}, {backRightY:F1})");
+
+        // Build lookup by angle from actual walls
+        MozaikWall[] unityWalls;
 #if UNITY_2023_1_OR_NEWER
         unityWalls = Object.FindObjectsByType<MozaikWall>(FindObjectsSortMode.None);
 #else
         unityWalls = Object.FindObjectsOfType<MozaikWall>();
 #endif
 
-        Debug.Log($"[MozaikDesJobExporter] Found {unityWalls.Length} MozaikWall(s) in scene.");
-
-        int id = startId;
-
-        foreach (MozaikWall w in unityWalls)
+        Dictionary<int, MozaikWall> wallByAngle = new Dictionary<int, MozaikWall>();
+        foreach (var w in unityWalls)
         {
-            if (w == null || !w.isActiveAndEnabled) 
-                continue;
+            if (w == null || !w.isActiveAndEnabled) continue;
+            int ang = Mathf.RoundToInt(w.mozaikAngleDegrees);
+            while (ang < 0) ang += 360;
+            while (ang >= 360) ang -= 360;
+            wallByAngle[ang] = w;
+        }
 
-            // Store wall ID for product references
-            _wallIdMap[w] = id;
+        // Mozaik wall definitions with correct corner positions
+        // Wall 1 (Ang=180): FRONT wall, starts at front-right, goes LEFT (roomWidth long)
+        // Wall 2 (Ang=90):  LEFT wall, starts at front-left, goes BACK (+Y) (roomDepth long)
+        // Wall 3 (Ang=0):   BACK wall, starts at back-left, goes RIGHT (roomWidth long)
+        // Wall 4 (Ang=270): RIGHT wall, starts at back-right, goes FRONT (-Y) (roomDepth long)
 
-            // Get endpoints in world space (meters)
-            w.GetWorldEndpoints(out Vector3 worldStartM, out Vector3 worldEndM);
+        var mozaikWallDefs = new (int mozWallNum, int ang, float posX, float posY, float length)[]
+        {
+            (1, 180, frontRightX, frontRightY, roomWidthMm),  // FRONT: start at front-right
+            (2, 90,  frontLeftX,  frontLeftY,  roomDepthMm),  // LEFT:  start at front-left
+            (3, 0,   backLeftX,   backLeftY,   roomWidthMm),  // BACK:  start at back-left
+            (4, 270, backRightX,  backRightY,  roomDepthMm),  // RIGHT: start at back-right
+        };
 
-            // Convert to Mozaik plan (mm)
-            Vector2 startPlanMm = UnityWorldToMozaikPlan(worldStartM);
-            Vector2 endPlanMm   = UnityWorldToMozaikPlan(worldEndM);
+        int idTag = startId;
+        List<MozaikWall> exportedWalls = new List<MozaikWall>();
 
-            float dx    = endPlanMm.x - startPlanMm.x;
-            float dy    = endPlanMm.y - startPlanMm.y;
-            float lenMm = Mathf.Sqrt(dx * dx + dy * dy);
-            float angDeg = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+        foreach (var def in mozaikWallDefs)
+        {
+            MozaikWall w = null;
+            wallByAngle.TryGetValue(def.ang, out w);
+            
+            // Even if no matching Unity wall, still export the wall geometry
+            float wallHeight = w?.heightMm ?? ceilingHeightMm;
+            float wallThick = w?.thicknessMm ?? wallThicknessMm;
+
+            if (w != null)
+            {
+                _wallIdMap[w] = def.mozWallNum;
+                exportedWalls.Add(w);
+            }
 
             XmlElement wallEl = doc.CreateElement("Wall");
-            wallEl.SetAttribute("IDTag", id.ToString());
-            wallEl.SetAttribute("WallNumber", id.ToString());
-            wallEl.SetAttribute("Len", lenMm.ToString("F1"));
-            wallEl.SetAttribute("Height", w.heightMm.ToString("F1"));
-            wallEl.SetAttribute("PosX", startPlanMm.x.ToString("F1"));
-            wallEl.SetAttribute("PosY", startPlanMm.y.ToString("F1"));
-            wallEl.SetAttribute("Ang", angDeg.ToString("F1"));
-            wallEl.SetAttribute("Thickness", w.thicknessMm.ToString("F1"));
-
-            // Required defaults
+            wallEl.SetAttribute("IDTag", idTag.ToString());
+            wallEl.SetAttribute("Len", def.length.ToString("F1"));
+            wallEl.SetAttribute("Height", wallHeight.ToString("F1"));
+            wallEl.SetAttribute("PosX", def.posX.ToString("F1"));
+            wallEl.SetAttribute("PosY", def.posY.ToString("F1"));
+            wallEl.SetAttribute("Ang", def.ang.ToString());
             wallEl.SetAttribute("Invisible", "False");
             wallEl.SetAttribute("SUDirty", "True");
             wallEl.SetAttribute("Bulge", "0");
+            wallEl.SetAttribute("WallNumber", def.mozWallNum.ToString());
+            wallEl.SetAttribute("Thickness", wallThick.ToString("F1"));
+            
             wallEl.SetAttribute("HasLeftEndCap", "False");
             wallEl.SetAttribute("HasRightEndCap", "False");
             wallEl.SetAttribute("HasBackSpace", "False");
             wallEl.SetAttribute("HasLeftSpace", "False");
             wallEl.SetAttribute("HasRightSpace", "False");
-            wallEl.SetAttribute("LeftSpaceLength", "0");
-            wallEl.SetAttribute("RightSpaceLength", "0");
+            wallEl.SetAttribute("LeftSpaceLength", "1371.6");
+            wallEl.SetAttribute("RightSpaceLength", "1371.6");
             wallEl.SetAttribute("ShapeType", "0");
             wallEl.SetAttribute("CathedralHeight", "0");
 
@@ -322,12 +418,146 @@ public class MozaikDesJobExporter : MonoBehaviour
 
             wallsNode.AppendChild(wallEl);
             
-            Debug.Log($"[MozaikDesJobExporter] Wall {id}: {w.gameObject.name} - Len={lenMm:F1}mm, Pos=({startPlanMm.x:F1}, {startPlanMm.y:F1})");
+            Debug.Log($"[MozaikDesJobExporter] Exported Wall {def.mozWallNum}: Ang={def.ang}°, Len={def.length:F1}, Pos=({def.posX:F1}, {def.posY:F1})");
             
-            id++;
+            idTag++;
         }
 
-        return id;
+        // Add WallJoints
+        if (exportedWalls.Count >= 4)
+        {
+            ExportWallJoints(doc, room, exportedWalls);
+        }
+
+        Debug.Log($"[MozaikDesJobExporter] === END WALL EXPORT ===");
+        return idTag;
+    }
+
+    /// <summary>
+    /// Export WallJoints section for a 4-wall room.
+    /// Walls are connected in sequence: 1→2→3→4→1
+    /// </summary>
+    private void ExportWallJoints(XmlDocument doc, XmlElement room, List<MozaikWall> walls)
+    {
+        // Get or create <WallJoints> node
+        XmlElement jointsNode = room["WallJoints"];
+        if (jointsNode == null)
+        {
+            jointsNode = doc.CreateElement("WallJoints");
+            // Insert after Walls
+            XmlNode wallsNode = room["Walls"];
+            if (wallsNode != null)
+                room.InsertAfter(jointsNode, wallsNode);
+            else
+                room.AppendChild(jointsNode);
+        }
+        else
+        {
+            jointsNode.RemoveAll(); // wipe old joints
+        }
+
+        // Sort walls by wallNumber
+        walls.Sort((a, b) => a.wallNumber.CompareTo(b.wallNumber));
+
+        // Create joints: 1→2, 2→3, 3→4, 4→1
+        for (int i = 0; i < walls.Count; i++)
+        {
+            int wall1Num = walls[i].wallNumber;
+            int wall2Num = walls[(i + 1) % walls.Count].wallNumber;
+
+            XmlElement jointEl = doc.CreateElement("WallJoint");
+            jointEl.SetAttribute("Wall1", wall1Num.ToString());
+            jointEl.SetAttribute("Wall2", wall2Num.ToString());
+            jointEl.SetAttribute("IsInterior", "False");
+            jointEl.SetAttribute("Wall1Corner", "1");
+            jointEl.SetAttribute("Wall2Corner", "0");
+            jointEl.SetAttribute("Wall2Along", "0");
+            jointEl.SetAttribute("Wall2Front", "False");
+            jointEl.SetAttribute("MiterBack", "False");
+
+            jointsNode.AppendChild(jointEl);
+        }
+
+        Debug.Log($"[MozaikDesJobExporter] Exported {walls.Count} WallJoints.");
+    }
+
+    /// <summary>
+    /// Export fixtures (openings, windows, doors) from FourWallRoomBuilder.
+    /// The opening goes on Wall 1 (front wall).
+    /// 
+    /// Mozaik fixture format from working DES:
+    /// <Fixt Name="Opening" Type="7" SubType="2" Wall="1" OnWallFront="True" 
+    ///       Width="1778" Height="2235.2" Depth="50.8" X="330.2" Elev="0" ...>
+    /// </summary>
+    private int ExportFixturesToXml(XmlDocument doc, XmlElement room, int startId)
+    {
+        // Get or create <Fixts> node
+        XmlElement fixtsNode = room["Fixts"];
+        if (fixtsNode == null)
+        {
+            fixtsNode = doc.CreateElement("Fixts");
+            // Insert after WallJoints or Walls
+            XmlNode wallJoints = room["WallJoints"];
+            XmlNode walls = room["Walls"];
+            if (wallJoints != null)
+                room.InsertAfter(fixtsNode, wallJoints);
+            else if (walls != null)
+                room.InsertAfter(fixtsNode, walls);
+            else
+                room.AppendChild(fixtsNode);
+        }
+        else
+        {
+            fixtsNode.RemoveAll();
+        }
+
+        // Find FourWallRoomBuilder
+        FourWallRoomBuilder roomBuilder = null;
+#if UNITY_2023_1_OR_NEWER
+        roomBuilder = Object.FindFirstObjectByType<FourWallRoomBuilder>();
+#else
+        roomBuilder = Object.FindObjectOfType<FourWallRoomBuilder>();
+#endif
+
+        if (roomBuilder == null || !roomBuilder.hasOpening)
+        {
+            Debug.Log("[MozaikDesJobExporter] No opening to export.");
+            return startId;
+        }
+
+        int idTag = startId;
+
+        // Create Opening fixture on Wall 1 (front wall)
+        XmlElement fixtEl = doc.CreateElement("Fixt");
+        fixtEl.SetAttribute("Name", "Opening");
+        fixtEl.SetAttribute("IDTag", idTag.ToString());
+        fixtEl.SetAttribute("Type", "7");      // Opening type
+        fixtEl.SetAttribute("SubType", "2");   // Subtype 2
+        fixtEl.SetAttribute("Wall", "1");      // Wall 1 = front wall
+        fixtEl.SetAttribute("OnWallFront", "True");
+        fixtEl.SetAttribute("Width", roomBuilder.openingWidthMm.ToString("F1"));
+        fixtEl.SetAttribute("Height", roomBuilder.openingHeightMm.ToString("F1"));
+        fixtEl.SetAttribute("Depth", "50.8");  // Standard 2" depth
+        fixtEl.SetAttribute("X", roomBuilder.openingXPositionMm.ToString("F1"));
+        fixtEl.SetAttribute("Elev", "0");
+        fixtEl.SetAttribute("Rot", "0");
+        fixtEl.SetAttribute("Outset", "0");
+        fixtEl.SetAttribute("SUDirty", "True");
+        fixtEl.SetAttribute("SketchUpFile", "");
+        fixtEl.SetAttribute("SourceLib", "");
+        fixtEl.SetAttribute("SnapTo", "0");
+        fixtEl.SetAttribute("NonGraphic", "False");
+
+        // Add LabelDimensionOverrideMap child
+        XmlElement labelOverride = doc.CreateElement("LabelDimensionOverrideMap");
+        fixtEl.AppendChild(labelOverride);
+
+        fixtsNode.AppendChild(fixtEl);
+        idTag++;
+
+        Debug.Log($"[MozaikDesJobExporter] Exported Opening: Width={roomBuilder.openingWidthMm}mm, Height={roomBuilder.openingHeightMm}mm, X={roomBuilder.openingXPositionMm}mm on Wall 1");
+
+        return idTag;
     }
 
     /// <summary>
@@ -502,6 +732,8 @@ public class MozaikDesJobExporter : MonoBehaviour
             prodEl.AppendChild(productOptions);
 
             // CabProdParts - use stored XML from import or create empty element
+            // IMPORTANT: Export ALL operations as-is. Do NOT strip operations.
+            // Mozaik handles adjacency recalculation on its own when the file is opened.
             if (!string.IsNullOrEmpty(cab.CabProdPartsXml))
             {
                 try
@@ -509,16 +741,8 @@ public class MozaikDesJobExporter : MonoBehaviour
                     XmlDocument tempDoc = new XmlDocument();
                     tempDoc.LoadXml(cab.CabProdPartsXml);
                     
-                    // For PANELS (Type=8): Strip auto-generated operations, keep user operations
-                    // Mozaik will regenerate line bores, fasteners, etc. based on adjacency
-                    if (cab.ProductType == 8)
-                    {
-                        int removedCount = StripNonUserOperations(tempDoc, cab.ProductName);
-                        if (removedCount > 0)
-                        {
-                            Debug.Log($"[MozaikDesJobExporter] {cab.ProductName}: Stripped {removedCount} auto-generated operation(s), kept user operations");
-                        }
-                    }
+                    // Export all operations as-is - no stripping!
+                    // This preserves holes, line bores, and user operations.
                     
                     XmlNode importedNode = doc.ImportNode(tempDoc.DocumentElement, true);
                     prodEl.AppendChild(importedNode);

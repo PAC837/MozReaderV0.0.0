@@ -4,6 +4,245 @@ Running development log for MozReaderV0.0.0.
 
 ---
 
+## [2025-12-19] Front Wall U-Shaped Opening with Proper Highlighting
+
+### Summary
+- Fixed wall number assignments to match gizmo labels and Mozaik export format
+- Implemented U-shaped opening visualization on front wall (Wall 1)
+- Fixed highlighting system to work correctly with opening segments
+- Opening area stays clear when wall is selected (only visible segments highlight)
+
+### Files
+- `Assets/Scripts/FourWallRoomBuilder.cs` – Fixed wall number assignments; added U-shaped opening with transparent WallVisual + visible segments
+- `Assets/Scripts/RuntimeWallSelector.cs` – Modified SetWallHighlight() to detect OpeningSegments and skip WallVisual
+
+### Behavior / Notes
+
+**Wall Number Fix:**
+- Swapped wallNumber assignments for left/right walls to match gizmo labels
+- Wall at X = -halfWidth: Now wallNumber = 4 (RIGHT in Mozaik, Ang=270°)
+- Wall at X = +halfWidth: Now wallNumber = 2 (LEFT in Mozaik, Ang=90°)
+- Export to Mozaik now has correct wall numbers matching visual labels
+
+**U-Shaped Opening System:**
+- Front wall (Wall 1) creates U-shaped opening with 3 visible segments:
+  - LeftSegment: From wall left edge to opening start
+  - RightSegment: From opening end to wall right edge  
+  - HeaderSegment: Above opening (from opening start to end)
+- WallVisual made transparent (still exists for highlighting system)
+- Opening segments offset 5% of thickness forward in Z to render in front
+- All segments have trigger colliders for click detection
+
+**Smart Highlighting:**
+- RuntimeWallSelector detects if wall has "OpeningSegments" child
+- **With opening**: Only highlights visible segments (LeftSegment, RightSegment, HeaderSegment), skips transparent WallVisual
+- **Without opening**: Highlights all renderers normally (back, left, right walls)
+- Result: Front wall shows U-shaped opening with blue segments when selected, opening area stays clear
+
+**Opening Configuration:**
+- `hasOpening` – Enable/disable opening on front wall
+- `openingWidthMm` – Width of opening (~70 inches default)
+- `openingHeightMm` – Height of opening (~88 inches default)
+- `openingXPositionMm` – Distance from left edge to opening start
+
+### Visual Result
+```
+Front Wall Selected View:
+┌──────────────────────────────────┐ ← Blue HeaderSegment
+│                                  │
+│  Blue      Opening Area      Blue│
+│  Left      (stays clear)     Right│
+│  Segment                    Segment│
+└──────────────────────────────────┘
+```
+
+### Test Steps
+1. Play scene - 4-wall room auto-builds
+2. Click front wall - U-shaped opening visible
+3. Only solid wall segments turn blue, opening stays clear
+4. Click other walls - entire wall turns blue (normal behavior)
+5. Export to Mozaik - wall numbers correct, opening preserved
+
+---
+
+## [2025-12-19] Rotation-Aware Cabinet Snapping & 4-Wall Room Builder
+
+### Summary
+- **MAJOR FIX**: CabinetWallSnapper now works correctly for walls at ANY rotation (0°, 90°, 180°, 270°)
+- Added rotation-aware helper methods to MozaikWall (GetFrontFaceCenter, GetFrontFaceNormal, etc.)
+- Created FourWallRoomBuilder matching Mozaik's DES format (4 joined walls + opening fixture)
+- Added wallNumber and mozaikAngleDegrees fields to MozaikWall for DES export
+
+### Files
+- `Assets/Scripts/MozaikWall.cs` – Added rotation-aware methods, wallNumber, mozaikAngleDegrees fields
+- `Assets/Scripts/CabinetWallSnapper.cs` – Rewrote SnapToWall() to use wall's local coordinate system
+- `Assets/Scripts/FourWallRoomBuilder.cs` – **NEW** 4-wall room matching Mozaik format
+
+### Behavior / Notes
+
+**The Bug (Fixed):**
+- `GetFrontFaceZ()` always added to world Z coordinate (only worked for walls facing +Z)
+- Side walls (rotated 90° or -90°) got wrong cabinet positions
+- Cabinets would float in space or snap to wrong location
+
+**The Fix:**
+- New rotation-aware methods use `transform.forward` and `transform.right`
+- `GetFrontFaceCenter()` - returns world position of front face center
+- `GetFrontFaceNormal()` - returns direction front face points (into room)
+- `GetLeftEdgePosition()` / `GetRightEdgePosition()` - returns world positions
+- `GetCabinetYRotation()` - returns Y angle for cabinet placement
+- `GetFrontFacePosition(distanceMm, elevationMm)` - returns position along wall
+
+**CabinetWallSnapper Changes:**
+- Uses wall's local coordinate system (wallForward, wallRight)
+- Positions cabinet relative to wall's left edge using vector math
+- Works for ANY wall rotation (0°, 90°, 180°, 270°, or arbitrary)
+- Rotation is already applied via RotateToFaceRoom()
+
+**FourWallRoomBuilder (Mozaik Compatible):**
+
+Wall numbering matches Mozaik DES format:
+| Wall | Position | Rotation | Mozaik Angle | Faces |
+|------|----------|----------|--------------|-------|
+| 1 | LEFT | 90° | 90° | +X (inward) |
+| 2 | BACK | 0° | 0° | +Z (inward) |
+| 3 | RIGHT | -90° | 270° | -X (inward) |
+| 4 | FRONT | 180° | 180° | -Z (inward) |
+
+Layout (top-down view):
+```
+                   BACK (Wall 2)
+    +─────────────────────────────────+
+    │                                 │
+    │  LEFT         RIGHT             │
+    │  (Wall 1)     (Wall 3)          │
+    │                                 │
+    +────────[ OPENING ]──────────────+
+                   FRONT (Wall 4)
+```
+
+**Opening System:**
+- Opening is a fixture on Wall 4 (front wall), not a gap between walls
+- Matches how Mozaik DES files represent openings
+- hasOpening, openingWidthMm, openingHeightMm, openingXPositionMm configurable
+
+**MozaikWall New Fields:**
+- `wallNumber` (1-4) - for DES export
+- `mozaikAngleDegrees` (0, 90, 180, 270) - for DES export
+
+### Unity Implementation Checklist
+
+1. **Using FourWallRoomBuilder:**
+   - Create empty GameObject named "4-Wall Room"
+   - Add `FourWallRoomBuilder` component
+   - Set room dimensions (width, depth, height, thickness)
+   - Configure opening (enabled, width, position)
+   - Right-click → "Build Room"
+
+2. **Placing Cabinets:**
+   - Select a wall (RuntimeWallSelector)
+   - Spawn cabinet from library
+   - Cabinet automatically snaps to wall front face
+   - Works on ALL 4 walls at any rotation
+
+3. **Verifying:**
+   - Select any wall in Scene view
+   - Blue gizmo = FRONT face (where cabinets go)
+   - Red gizmo = BACK face
+   - Yellow sphere = START of wall
+   - Green sphere = END of wall
+
+### What's Preserved
+- Smart placement (gap finding) - uses XPositionMm (1D, rotation-independent)
+- Elevation from MozCabinetData
+- All existing DES export functionality
+- Wall selection and highlighting
+
+---
+
+## [2025-12-19] Reach-In Closet: 5-Wall Room Configuration
+
+### Summary
+- Added `ReachInClosetBuilder` component that creates a 5-wall reach-in closet configuration
+- Room now starts with 5 walls instead of 1 (back wall, 2 side walls, 2 return walls)
+- All existing cabinet placement and snapping systems work with the new walls
+- User can adjust wall dimensions and ceiling height via Inspector
+
+### Files
+- `Assets/Scripts/ReachInClosetBuilder.cs` – **NEW** Builds and manages reach-in closet with 5 walls
+- `Assets/Scripts/RuntimeWallSelector.cs` – Added `autoCreateReachInCloset` setting, `CreateReachInCloset()` method
+
+### Behavior / Notes
+
+**Reach-In Closet Layout (top-down view):**
+```
+    Left Return     [ Opening ]     Right Return
+    |_________|                     |_________|
+    |                                         |
+    |   Left Side                 Right Side  |
+    |                                         |
+    |_________________________________________|
+                    Back Wall
+```
+
+**Default Dimensions:**
+| Wall | Default Size | Notes |
+|------|-------------|-------|
+| Back Wall | 2438.4mm (8ft) | Total closet width |
+| Side Walls | 609.6mm (24in) | Closet depth |
+| Return Walls | 203.2mm (8in) each | Opening = Back - 16" |
+| Ceiling Height | 2438.4mm (8ft) | Same for all walls |
+| Wall Thickness | 101.6mm (4in) | Standard |
+
+**Wall Orientation:**
+- All walls face INWARD (toward closet interior)
+- Back Wall: Faces +Z (into room)
+- Left Side: Faces +X (toward center)
+- Right Side: Faces -X (toward center)
+- Return Walls: Face -Z (toward back)
+
+**Opening Calculation:**
+- Opening Width = Back Wall Length - (2 × Return Wall Length)
+- Default: 2438.4mm - (2 × 203.2mm) = 2032mm opening
+
+**Inspector Controls:**
+- `backWallLengthMm` - Total closet width
+- `sideWallDepthMm` - How deep the closet is
+- `returnWallLengthMm` - How much each side "returns" to create opening
+- `ceilingHeightMm` - Height of all walls
+- `wallThicknessMm` - Thickness of all walls
+
+**Context Menu Actions:**
+- "Build Closet" - Creates/rebuilds all 5 walls
+- "Update Dimensions" - Updates existing walls without destroying
+- "Destroy All Walls" - Removes all walls
+
+### Unity Implementation Checklist
+
+1. **Automatic Setup (Default)**
+   - Simply enter Play mode
+   - If `RuntimeWallSelector.autoCreateReachInCloset = true` (default), closet is auto-created
+   - Back wall is auto-selected
+
+2. **Manual Setup**
+   - Create empty GameObject named "Reach-In Closet"
+   - Add `ReachInClosetBuilder` component
+   - Set dimensions in Inspector
+   - Right-click component → "Build Closet"
+
+3. **Adjusting Dimensions**
+   - Select "Reach-In Closet" GameObject
+   - Change dimension fields in Inspector
+   - Right-click → "Update Dimensions" (or values update live)
+
+### Integration Notes
+- All 5 walls work with existing `CabinetWallSnapper`
+- Walls are clickable/selectable via `RuntimeWallSelector`
+- Export via `MozaikDesJobExporter` handles all walls correctly
+- Cabinets can be placed on any wall (back, sides, or returns)
+
+---
+
 ## [2025-12-19] Fix Pink Shader Issues: Walls, Highlights, and Wireframes
 
 ### Summary

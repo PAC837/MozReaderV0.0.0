@@ -119,9 +119,11 @@ public class CabinetWallSnapper : MonoBehaviour
     /// <summary>
     /// Snaps this cabinet to the target wall.
     /// - Rotates cabinet to face room (if autoRotateToFaceRoom is enabled)
-    /// - Back (-Z) of cabinet touches front (+Z) of wall
+    /// - Back of cabinet touches wall's front face
     /// - Bottom of cabinet aligns with floor + elevation (from MozCabinetData or manual)
-    /// - Left edge of cabinet aligns with wall's left edge
+    /// - Cabinet positioned along wall based on XPositionMm
+    /// 
+    /// ROTATION-AWARE: Works correctly for walls at any angle (0°, 90°, 180°, 270°, etc.)
     /// </summary>
     public void SnapToWall()
     {
@@ -151,90 +153,119 @@ public class CabinetWallSnapper : MonoBehaviour
             LogOrientationDebugInfo();
         }
 
+        // Get cabinet data if available
+        if (_cabinetData == null)
+        {
+            _cabinetData = GetComponent<MozCabinetData>();
+        }
+
         // Get elevation from MozCabinetData or manual setting
         float elevationMm = GetEffectiveElevationMm();
         float elevationM = elevationMm * 0.001f;
         _lastElevationUsedMm = elevationMm;
 
-        // Use wall helper methods for clean positioning
-        float wallFrontZ = targetWall.GetFrontFaceZ();
-        float floorY = targetWall.GetFloorY();
+        // === ROTATION-AWARE POSITIONING ===
+        // Use wall's local coordinate system instead of world X/Y/Z
 
-        // Get wall endpoints to determine visual left/right
-        targetWall.GetWorldEndpoints(out Vector3 wallStart, out Vector3 wallEnd);
+        // Get wall directions
+        Vector3 wallForward = targetWall.GetFrontFaceNormal(); // Direction into room
+        Vector3 wallRight = targetWall.transform.right;        // Direction along wall length (local +X)
         
-        // Determine which endpoint is the visual "left" based on world coordinates
-        // For X-aligned walls: left = lower X value
-        // For Z-aligned walls: left = lower Z value
-        bool isXAligned = Mathf.Abs(wallEnd.x - wallStart.x) > Mathf.Abs(wallEnd.z - wallStart.z);
-        Vector3 visualLeftEdgePos;
+        // Get cabinet dimensions in WALL-RELATIVE space (not world AABB!)
+        // After rotation, bounds.size is axis-aligned to WORLD, not the cabinet's local axes.
+        // Cabinet width runs along the WALL (wallRight direction), depth runs perpendicular (wallForward)
+        Vector3 boundsSize = cabinetBounds.size;
         
-        if (isXAligned)
+        // Calculate cabinet dimensions relative to wall orientation:
+        // - Width = extent along wallRight direction
+        // - Depth = extent along wallForward direction  
+        // For axis-aligned bounds, we need to figure out which world axis aligns with which wall direction
+        float cabinetWidthM, cabinetDepthM;
+        
+        // Determine which bounds dimension corresponds to wall width/depth
+        // wallRight is the direction along the wall (cabinet width runs this way)
+        // wallForward is perpendicular to wall (cabinet depth runs this way)
+        float wallRightDotX = Mathf.Abs(Vector3.Dot(wallRight, Vector3.right));
+        float wallRightDotZ = Mathf.Abs(Vector3.Dot(wallRight, Vector3.forward));
+        
+        if (wallRightDotX > wallRightDotZ)
         {
-            // Wall runs along X axis - visual left is whichever endpoint has HIGHER X
-            visualLeftEdgePos = (wallStart.x < wallEnd.x) ? wallEnd : wallStart;
+            // Wall runs mostly along world X, so cabinet width = bounds X, depth = bounds Z
+            cabinetWidthM = boundsSize.x;
+            cabinetDepthM = boundsSize.z;
         }
         else
         {
-            // Wall runs along Z axis - visual left is whichever endpoint has HIGHER Z
-            visualLeftEdgePos = (wallStart.z < wallEnd.z) ? wallEnd : wallStart;
+            // Wall runs mostly along world Z, so cabinet width = bounds Z, depth = bounds X
+            cabinetWidthM = boundsSize.z;
+            cabinetDepthM = boundsSize.x;
         }
         
-        float wallVisualLeftX = visualLeftEdgePos.x;
+        float cabinetHeightM = boundsSize.y;  // Height is always Y
+        float halfCabinetWidthM = cabinetWidthM * 0.5f;
+        float halfCabinetDepthM = cabinetDepthM * 0.5f;
+        
+        // Get floor Y from wall
+        float floorY = targetWall.GetFloorY();
 
-        // Calculate current cabinet edge positions
-        float cabinetBackZ = cabinetBounds.min.z;   // -Z face of cabinet
-        float cabinetBottomY = cabinetBounds.min.y; // Bottom of cabinet
-        float cabinetLeftX = cabinetBounds.max.x;   // Cabinet's visual LEFT edge (higher X = left for this wall)
-
-        // Calculate offsets needed to snap cabinet to wall
-        // For Z: cabinet back should touch wall front
-        float zOffset = wallFrontZ - cabinetBackZ;
-
-        // For Y: cabinet bottom should be at floor + elevation
-        float targetBottomY = floorY + elevationM;
-        float yOffset = targetBottomY - cabinetBottomY;
-
-        // For X: Use XPositionMm from MozCabinetData if set, otherwise default to wall left edge
-        float xOffset;
+        // Determine XPositionMm (distance from wall's local left edge)
+        float xPositionMm;
         if (_cabinetData != null && _cabinetData.XPositionMm > 0)
         {
             // Smart placement has set a specific position - use it
-            // Calculate wall direction (left to right)
-            Vector3 visualRightEdgePos = (visualLeftEdgePos == wallStart) ? wallEnd : wallStart;
-            Vector3 wallDirection = (visualRightEdgePos - visualLeftEdgePos).normalized;
-            
-            // Target position for cabinet LEFT EDGE
-            float targetXPositionM = _cabinetData.XPositionMm * 0.001f;
-            Vector3 targetLeftEdgePos = visualLeftEdgePos + wallDirection * targetXPositionM;
-            
-            xOffset = targetLeftEdgePos.x - cabinetLeftX;
-            
-            Debug.Log($"[CabinetWallSnapper] Using smart placement position: {_cabinetData.XPositionMm}mm");
+            xPositionMm = _cabinetData.XPositionMm;
+            Debug.Log($"[CabinetWallSnapper] Using smart placement position: {xPositionMm}mm");
         }
         else
         {
-            // No specific position set - default to wall left edge
-            xOffset = wallVisualLeftX - cabinetLeftX;
-            Debug.Log($"[CabinetWallSnapper] No position set - defaulting to wall left edge");
+            // No specific position set - default to 0 (wall left edge)
+            xPositionMm = 0f;
+            Debug.Log($"[CabinetWallSnapper] No position set - defaulting to wall left edge (0mm)");
         }
 
-        // Apply the offset to the cabinet root transform
-        Vector3 newPosition = transform.position + new Vector3(xOffset, yOffset, zOffset);
+        // Calculate target position on wall's front face
+        // XPositionMm is measured to the cabinet's LEFT EDGE, so add half width to get center
+        float xPositionM = xPositionMm * 0.001f;
+        float cabinetCenterDistanceM = xPositionM + halfCabinetWidthM;
+
+        // Get wall's left edge position (START position in Mozaik convention)
+        Vector3 wallLeftEdge = targetWall.GetLeftEdgePosition();
+
+        // Calculate cabinet center position:
+        // 1. Start at wall left edge (START)
+        // 2. Move along wall in NEGATIVE wallRight direction (toward END)
+        // 3. Move up for elevation + half cabinet height
+        // 4. Move outward from wall (wallForward) by half cabinet depth (so back touches wall)
         
+        Vector3 targetPosition = wallLeftEdge
+            - wallRight * cabinetCenterDistanceM           // Along wall (negative = toward END)
+            + Vector3.up * (floorY + elevationM + cabinetHeightM * 0.5f - cabinetBounds.center.y + transform.position.y) // Vertical (adjusted for bounds offset)
+            + wallForward * halfCabinetDepthM;             // Out from wall
+
+        // Calculate the offset from current bounds center to target position
+        // We need to account for the fact that bounds.center may not equal transform.position
+        Vector3 boundsOffset = cabinetBounds.center - transform.position;
+        
+        // Adjust: We want the cabinet's back face touching the wall's front face
+        // So we position based on where the cabinet CENTER should be
+        Vector3 cabinetTargetCenter = wallLeftEdge
+            - wallRight * cabinetCenterDistanceM  // Negative = toward END
+            + Vector3.up * (floorY + elevationM + cabinetHeightM * 0.5f)
+            + wallForward * halfCabinetDepthM;
+
+        // Calculate offset needed
+        Vector3 offset = cabinetTargetCenter - cabinetBounds.center;
+
         // Record undo for Editor
 #if UNITY_EDITOR
         UnityEditor.Undo.RecordObject(transform, "Snap Cabinet to Wall");
 #endif
         
+        Vector3 newPosition = transform.position + offset;
         transform.position = newPosition;
         _lastSnapSuccessful = true;
 
-        // Update MozCabinetData if present (X position only - elevation is preserved from .moz file)
-        if (_cabinetData == null)
-        {
-            _cabinetData = GetComponent<MozCabinetData>();
-        }
+        // Update MozCabinetData if present
         if (_cabinetData != null)
         {
 #if UNITY_EDITOR
@@ -248,8 +279,11 @@ public class CabinetWallSnapper : MonoBehaviour
         }
 
         Debug.Log($"[CabinetWallSnapper] Snapped '{gameObject.name}' to wall '{targetWall.gameObject.name}'.\n" +
+                  $"  Wall forward: {wallForward}\n" +
+                  $"  Wall rotation: {targetWall.transform.eulerAngles.y}°\n" +
+                  $"  XPositionMm: {xPositionMm}mm\n" +
                   $"  Elevation: {elevationMm}mm ({elevationM:F4}m)\n" +
-                  $"  Offset applied: ({xOffset:F4}, {yOffset:F4}, {zOffset:F4})\n" +
+                  $"  Offset applied: {offset}\n" +
                   $"  New position: {newPosition}");
     }
 

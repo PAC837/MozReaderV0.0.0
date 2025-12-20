@@ -14,6 +14,17 @@ using UnityEngine.EventSystems;
 /// </summary>
 public class RuntimeWallSelector : MonoBehaviour
 {
+    [Header("Startup Settings")]
+    [Tooltip("Automatically create a 4-wall room on startup if no walls exist.")]
+    public bool autoCreateRoom = true;
+
+    [Tooltip("Reference to FourWallRoomBuilder (auto-found if null).")]
+    public FourWallRoomBuilder roomBuilder;
+
+    [Tooltip("Legacy: Reference to ReachInClosetBuilder (use FourWallRoomBuilder instead).")]
+    [Obsolete("Use roomBuilder (FourWallRoomBuilder) instead")]
+    public ReachInClosetBuilder closetBuilder;
+
     [Header("Wall Settings")]
     [Tooltip("Default wall dimensions when creating new walls (mm).")]
     public float defaultWallLengthMm = 3000f;
@@ -55,8 +66,9 @@ public class RuntimeWallSelector : MonoBehaviour
     // Input System
     private Mouse _mouse;
 
-    // Original material storage for selection highlighting
-    private Material _originalWallMaterial;
+    // Original material storage for selection highlighting (per wall)
+    private System.Collections.Generic.Dictionary<MozaikWall, Material> _originalWallMaterials = 
+        new System.Collections.Generic.Dictionary<MozaikWall, Material>();
 
     #region Properties
 
@@ -105,6 +117,12 @@ public class RuntimeWallSelector : MonoBehaviour
 
         // Find any existing walls in the scene
         RefreshWallList();
+
+        // Auto-create 4-wall room if enabled and no walls exist
+        if (autoCreateRoom && _allWalls.Count == 0)
+        {
+            CreateFourWallRoom();
+        }
     }
 
     private void Update()
@@ -223,33 +241,56 @@ public class RuntimeWallSelector : MonoBehaviour
     {
         if (wall == null) return;
 
-        // Find the wall's visual child
-        Transform visualTransform = wall.transform.Find("WallVisual");
-        if (visualTransform == null)
+        // Check if wall has OpeningSegments (front wall with U-shaped opening)
+        Transform openingSegments = wall.transform.Find("OpeningSegments");
+        bool hasOpening = (openingSegments != null);
+
+        // Find ALL renderers on this wall
+        Renderer[] allRenderers = wall.GetComponentsInChildren<Renderer>();
+        
+        if (allRenderers == null || allRenderers.Length == 0)
         {
             if (showDebugLogs)
-                Debug.LogWarning($"[RuntimeWallSelector] WallVisual child not found for {wall.name}");
+                Debug.LogWarning($"[RuntimeWallSelector] No Renderers found on {wall.name}");
             return;
         }
 
-        Renderer renderer = visualTransform.GetComponent<Renderer>();
-        if (renderer == null)
+        // If wall has opening, exclude WallVisual from highlighting (keep opening clear)
+        // Otherwise highlight all renderers (normal walls)
+        Renderer[] renderersToHighlight;
+        if (hasOpening)
         {
-            if (showDebugLogs)
-                Debug.LogWarning($"[RuntimeWallSelector] No Renderer on WallVisual for {wall.name}");
-            return;
+            // Only highlight the opening segments, skip WallVisual
+            System.Collections.Generic.List<Renderer> segmentRenderers = new System.Collections.Generic.List<Renderer>();
+            foreach (Renderer r in allRenderers)
+            {
+                // Skip WallVisual renderer
+                if (r.transform.name != "WallVisual")
+                {
+                    segmentRenderers.Add(r);
+                }
+            }
+            renderersToHighlight = segmentRenderers.ToArray();
+        }
+        else
+        {
+            // Normal wall - highlight everything
+            renderersToHighlight = allRenderers;
         }
 
         if (highlighted)
         {
-            // Store original material
-            if (renderer.sharedMaterial != null)
+            // Store original materials
+            if (!_originalWallMaterials.ContainsKey(wall))
             {
-                _originalWallMaterial = renderer.sharedMaterial;
+                if (renderersToHighlight.Length > 0 && renderersToHighlight[0].sharedMaterial != null)
+                {
+                    _originalWallMaterials[wall] = renderersToHighlight[0].sharedMaterial;
+                }
             }
             
-            // Create a new material instance with the tint using URP-compatible shader
-            Shader shader = Shader.Find("Sprites/Default"); // Always available, works for highlights
+            // Create highlight material
+            Shader shader = Shader.Find("Sprites/Default");
             if (shader == null) shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
             
@@ -262,7 +303,6 @@ public class RuntimeWallSelector : MonoBehaviour
             Material highlightMat = new Material(shader);
             highlightMat.name = "WallHighlight";
             
-            // Set color based on shader type
             if (highlightMat.HasProperty("_Color"))
             {
                 highlightMat.SetColor("_Color", selectedWallTint);
@@ -272,20 +312,28 @@ public class RuntimeWallSelector : MonoBehaviour
                 highlightMat.SetColor("_BaseColor", selectedWallTint);
             }
             
-            renderer.material = highlightMat;
+            // Apply highlight only to selected renderers
+            foreach (Renderer renderer in renderersToHighlight)
+            {
+                renderer.material = highlightMat;
+            }
             
             if (showDebugLogs)
-                Debug.Log($"[RuntimeWallSelector] Applied highlight to {wall.name} using shader: {shader.name}");
+                Debug.Log($"[RuntimeWallSelector] Applied highlight to {renderersToHighlight.Length} renderer(s) on {wall.name} (hasOpening: {hasOpening})");
         }
         else
         {
             // Restore original material
-            if (_originalWallMaterial != null)
+            if (_originalWallMaterials.TryGetValue(wall, out Material originalMat) && originalMat != null)
             {
-                renderer.material = _originalWallMaterial;
+                foreach (Renderer renderer in renderersToHighlight)
+                {
+                    renderer.material = originalMat;
+                }
+                _originalWallMaterials.Remove(wall);
                 
                 if (showDebugLogs)
-                    Debug.Log($"[RuntimeWallSelector] Removed highlight from {wall.name}");
+                    Debug.Log($"[RuntimeWallSelector] Removed highlight from {renderersToHighlight.Length} renderer(s) on {wall.name}");
             }
         }
     }
@@ -357,6 +405,90 @@ public class RuntimeWallSelector : MonoBehaviour
     public MozaikWall CreateWallAtOrigin()
     {
         return CreateWall(Vector3.zero);
+    }
+
+    /// <summary>
+    /// Creates a 4-wall room using FourWallRoomBuilder.
+    /// If no builder exists, one is created automatically.
+    /// This is the default room type matching Mozaik's DES format.
+    /// </summary>
+    public void CreateFourWallRoom()
+    {
+        // Find or create the room builder
+        if (roomBuilder == null)
+        {
+            roomBuilder = FindFirstObjectByType<FourWallRoomBuilder>();
+        }
+
+        if (roomBuilder == null)
+        {
+            // Create a new FourWallRoomBuilder
+            GameObject builderGO = new GameObject("4-Wall Room");
+            roomBuilder = builderGO.AddComponent<FourWallRoomBuilder>();
+
+            // Apply default wall material if set
+            if (defaultWallMaterial != null)
+            {
+                roomBuilder.wallMaterial = defaultWallMaterial;
+            }
+
+            if (showDebugLogs)
+                Debug.Log("[RuntimeWallSelector] Created FourWallRoomBuilder.");
+        }
+
+        // Build the room (this creates all 4 walls)
+        roomBuilder.BuildRoom();
+
+        // Refresh our wall list to include the new walls
+        RefreshWallList();
+
+        // Auto-select Wall 1 (Left wall)
+        if (roomBuilder.LeftWall != null)
+        {
+            SelectWall(roomBuilder.LeftWall);
+        }
+
+        if (showDebugLogs)
+            Debug.Log($"[RuntimeWallSelector] Created 4-wall room with {_allWalls.Count} walls.");
+    }
+
+    /// <summary>
+    /// Legacy: Creates a reach-in closet with 5 walls using ReachInClosetBuilder.
+    /// Use CreateFourWallRoom() instead for Mozaik-compatible output.
+    /// </summary>
+    [Obsolete("Use CreateFourWallRoom() instead")]
+    public void CreateReachInCloset()
+    {
+        // Find or create the closet builder
+        if (closetBuilder == null)
+        {
+            closetBuilder = FindFirstObjectByType<ReachInClosetBuilder>();
+        }
+
+        if (closetBuilder == null)
+        {
+            // Create a new ReachInClosetBuilder
+            GameObject builderGO = new GameObject("Reach-In Closet");
+            closetBuilder = builderGO.AddComponent<ReachInClosetBuilder>();
+
+            // Apply default wall material if set
+            if (defaultWallMaterial != null)
+            {
+                closetBuilder.wallMaterial = defaultWallMaterial;
+            }
+
+            if (showDebugLogs)
+                Debug.Log("[RuntimeWallSelector] Created ReachInClosetBuilder.");
+        }
+
+        // Build the closet (this creates all 5 walls)
+        closetBuilder.BuildCloset();
+
+        // Refresh our wall list to include the new walls
+        RefreshWallList();
+
+        if (showDebugLogs)
+            Debug.Log($"[RuntimeWallSelector] Created reach-in closet with {_allWalls.Count} walls.");
     }
 
     #endregion
