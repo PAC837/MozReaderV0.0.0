@@ -104,25 +104,25 @@ Front Wall Selected View:
 Wall numbering matches Mozaik DES format:
 | Wall | Position | Rotation | Mozaik Angle | Faces |
 |------|----------|----------|--------------|-------|
-| 1 | LEFT | 90° | 90° | +X (inward) |
-| 2 | BACK | 0° | 0° | +Z (inward) |
-| 3 | RIGHT | -90° | 270° | -X (inward) |
-| 4 | FRONT | 180° | 180° | -Z (inward) |
+| 1 | FRONT | 180° | 180° | -Z (inward) |
+| 2 | LEFT | -90° | 90° | -X (inward) |
+| 3 | BACK | 0° | 0° | +Z (inward) |
+| 4 | RIGHT | 90° | 270° | +X (inward) |
 
 Layout (top-down view):
 ```
-                   BACK (Wall 2)
+                   BACK (Wall 3)
     +─────────────────────────────────+
     │                                 │
-    │  LEFT         RIGHT             │
-    │  (Wall 1)     (Wall 3)          │
+    │  RIGHT        LEFT              │
+    │  (Wall 4)     (Wall 2)          │
     │                                 │
     +────────[ OPENING ]──────────────+
-                   FRONT (Wall 4)
+                   FRONT (Wall 1)
 ```
 
 **Opening System:**
-- Opening is a fixture on Wall 4 (front wall), not a gap between walls
+- Opening is a fixture on Wall 1 (front wall), not a gap between walls
 - Matches how Mozaik DES files represent openings
 - hasOpening, openingWidthMm, openingHeightMm, openingXPositionMm configurable
 
